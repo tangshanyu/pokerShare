@@ -88,7 +88,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
     }
   }, []);
 
-  const updatePlayer = useMutation(({ storage }, id: string, field: keyof Player, value: string | number) => {
+  const updatePlayer = useMutation(({ storage }, { id, field, value }: { id: string, field: keyof Player, value: string | number }) => {
     const list = storage.get("players");
     if (!list) return;
     const index = list.findIndex(p => p.id === id);
