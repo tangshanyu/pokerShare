@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { RoomProvider } from './liveblocks.config';
+import { RoomProvider, hasApiKey } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 
@@ -47,6 +47,32 @@ const Lobby = () => {
   );
 };
 
+// Error Screen for Missing Key
+const MissingKeyScreen = () => (
+  <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans p-4">
+    <div className="glass-panel p-8 rounded-3xl text-center max-w-md w-full border border-red-500/30 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 to-orange-500"></div>
+        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">⚠️</div>
+        <h1 className="text-2xl font-bold mb-2">Configuration Missing</h1>
+        <p className="text-gray-400 mb-6 text-sm">
+          Liveblocks API Key 尚未設定或無效。
+          <br/>
+          (API Key is missing or invalid)
+        </p>
+        <div className="text-left bg-black/40 p-4 rounded-xl border border-white/5 mb-6">
+            <p className="text-xs text-gray-500 uppercase font-bold mb-2">Required Environment Variable:</p>
+            <code className="block text-xs font-mono text-poker-green break-all">VITE_LIVEBLOCKS_PUBLIC_KEY</code>
+            <div className="mt-2 pt-2 border-t border-white/5 text-xs text-gray-600">
+               Current Status: {hasApiKey ? "Valid" : "Missing / Invalid"}
+            </div>
+        </div>
+        <div className="text-xs text-gray-500">
+            請確認 .env 檔案或 Vercel 環境變數設定正確，並且 Key 以 "pk_" 開頭。
+        </div>
+    </div>
+  </div>
+);
+
 // Loading Screen
 const Loading = () => (
   <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
@@ -59,7 +85,9 @@ const Loading = () => (
 
 root.render(
   <React.StrictMode>
-    {roomId ? (
+    {!hasApiKey ? (
+      <MissingKeyScreen />
+    ) : roomId ? (
       <RoomProvider 
         id={roomId} 
         initialPresence={{}}
