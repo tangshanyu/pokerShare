@@ -44,14 +44,21 @@ const App: React.FC = () => {
   // Mutations
   const updateSettings = useMutation(({ storage }, newSettings: Partial<typeof settings>) => {
     const s = storage.get("settings");
+    // Safety check in case settings object is missing
+    if (!s) return;
+    
     if (newSettings.cashPerBuyIn !== undefined) s.set("cashPerBuyIn", newSettings.cashPerBuyIn);
     if (newSettings.chipPerBuyIn !== undefined) s.set("chipPerBuyIn", newSettings.chipPerBuyIn);
   }, []);
 
   const addPlayer = useMutation(({ storage }) => {
-    storage.get("players").push({
+    const list = storage.get("players");
+    // Safety check
+    if (!list) return;
+
+    list.push({
       id: Date.now().toString(),
-      name: `Player ${storage.get("players").length + 1}`,
+      name: `Player ${list.length + 1}`,
       buyInCount: 1,
       finalChips: 0
     });
@@ -59,11 +66,13 @@ const App: React.FC = () => {
 
   const importPlayers = useMutation(({ storage }, newPlayers: Player[]) => {
     const list = storage.get("players");
+    if (!list) return;
     newPlayers.forEach(p => list.push(p));
   }, []);
 
   const removePlayer = useMutation(({ storage }, id: string) => {
     const list = storage.get("players");
+    if (!list) return;
     const index = list.findIndex(p => p.id === id);
     if (index !== -1) {
       list.delete(index);
@@ -72,17 +81,26 @@ const App: React.FC = () => {
 
   const updatePlayer = useMutation(({ storage }, id: string, field: keyof Player, value: string | number) => {
     const list = storage.get("players");
+    if (!list) return;
     const index = list.findIndex(p => p.id === id);
     if (index !== -1) {
       const player = list.get(index);
-      // We need to construct a new object or clone it because Player is a plain object in the list
-      // However, LiveList.set expects the full object replacement or we can rely on immutability logic if it was a LiveObject.
-      // Since `players` is LiveList<Player> (JSON objects), we replace the item.
       const updatedPlayer = { ...player, [field]: value };
       list.set(index, updatedPlayer);
     }
   }, []);
 
+  // Guard clause: Ensure storage is loaded
+  if (!settings || !players) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
+        <div className="animate-pulse flex flex-col items-center">
+           <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
+           <div className="text-sm font-mono">Initializing Room Storage...</div>
+        </div>
+      </div>
+    );
+  }
 
   const handleCalculate = () => {
     // players and settings are read-only here, perfect for calculation
