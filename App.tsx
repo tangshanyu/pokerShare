@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Player, GameSettings, CalculationResult } from './types';
-import { calculateSettlement, serializeState, deserializeState, generateCSV, generateHTMLTable } from './utils/pokerLogic';
+import { Player, CalculationResult } from './types';
+import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
 import { ImportModal } from './components/ImportModal';
+import { useStorage, useMutation, useOthers } from './liveblocks.config';
+import { LiveObject } from '@liveblocks/client';
 
 // Icons
 const ChipsIcon = () => (
@@ -22,73 +24,79 @@ const DocsIcon = () => (
 const SheetIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
 );
+const UsersIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+);
 
 const App: React.FC = () => {
-  const [settings, setSettings] = useState<GameSettings>({
-    chipPerBuyIn: 1000,
-    cashPerBuyIn: 500
-  });
+  // Liveblocks Hooks
+  const others = useOthers();
+  const playerCount = others.length + 1; // +1 for self
 
-  const [players, setPlayers] = useState<Player[]>([]);
+  // Access Storage directly (Immutable style via Liveblocks)
+  const players = useStorage((root) => root.players);
+  const settings = useStorage((root) => root.settings);
 
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [activeTab, setActiveTab] = useState<'transfers' | 'profits' | 'export'>('transfers');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [sharedUrl, setSharedUrl] = useState('');
 
-  // Check for URL State on Load
-  useEffect(() => {
-    const hash = window.location.hash.slice(1); // Remove #
-    if (hash) {
-      const data = deserializeState(hash);
-      if (data) {
-        setPlayers(data.players);
-        setSettings(data.settings);
-      }
+  // Mutations
+  const updateSettings = useMutation(({ storage }, newSettings: Partial<typeof settings>) => {
+    const s = storage.get("settings");
+    if (newSettings.cashPerBuyIn !== undefined) s.set("cashPerBuyIn", newSettings.cashPerBuyIn);
+    if (newSettings.chipPerBuyIn !== undefined) s.set("chipPerBuyIn", newSettings.chipPerBuyIn);
+  }, []);
+
+  const addPlayer = useMutation(({ storage }) => {
+    storage.get("players").push({
+      id: Date.now().toString(),
+      name: `Player ${storage.get("players").length + 1}`,
+      buyInCount: 1,
+      finalChips: 0
+    });
+  }, []);
+
+  const importPlayers = useMutation(({ storage }, newPlayers: Player[]) => {
+    const list = storage.get("players");
+    newPlayers.forEach(p => list.push(p));
+  }, []);
+
+  const removePlayer = useMutation(({ storage }, id: string) => {
+    const list = storage.get("players");
+    const index = list.findIndex(p => p.id === id);
+    if (index !== -1) {
+      list.delete(index);
     }
   }, []);
 
-  // Update URL whenever state changes
-  useEffect(() => {
-    const hash = serializeState(players, settings);
-    const newUrl = `${window.location.origin}${window.location.pathname}#${hash}`;
-    setSharedUrl(newUrl);
-  }, [players, settings]);
+  const updatePlayer = useMutation(({ storage }, id: string, field: keyof Player, value: string | number) => {
+    const list = storage.get("players");
+    const index = list.findIndex(p => p.id === id);
+    if (index !== -1) {
+      const player = list.get(index);
+      // We need to construct a new object or clone it because Player is a plain object in the list
+      // However, LiveList.set expects the full object replacement or we can rely on immutability logic if it was a LiveObject.
+      // Since `players` is LiveList<Player> (JSON objects), we replace the item.
+      const updatedPlayer = { ...player, [field]: value };
+      list.set(index, updatedPlayer);
+    }
+  }, []);
 
-  const handleAddPlayer = () => {
-    setPlayers([...players, {
-      id: Date.now().toString(),
-      name: `Player ${players.length + 1}`,
-      buyInCount: 1,
-      finalChips: 0
-    }]);
-  };
-
-  const handleRemovePlayer = (id: string) => {
-    setPlayers(players.filter(p => p.id !== id));
-  };
-
-  const handleUpdatePlayer = (id: string, field: keyof Player, value: string | number) => {
-    setPlayers(players.map(p => {
-      if (p.id === id) {
-        return { ...p, [field]: value };
-      }
-      return p;
-    }));
-  };
 
   const handleCalculate = () => {
+    // players and settings are read-only here, perfect for calculation
     const res = calculateSettlement(players, settings);
     setResult(res);
-    // Auto-scroll to results
     setTimeout(() => {
         document.getElementById('resultsSection')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(sharedUrl).then(() => {
-      alert("連結已複製到剪貼簿！(Link Copied)");
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      alert("房間連結已複製！分享給朋友即可加入。\n(Room Link Copied!)");
     });
   };
 
@@ -120,29 +128,21 @@ const App: React.FC = () => {
     navigator.clipboard.writeText(getExportText()).then(() => alert("報告已複製 (Report Copied)"));
   };
 
-  // Google Docs Rich Text Copy
   const copyForGoogleDocs = async () => {
     if (!result) return;
     const html = generateHTMLTable(result, settings);
-    
     try {
       const blobHtml = new Blob([html], { type: 'text/html' });
       const blobText = new Blob([getExportText()], { type: 'text/plain' });
-      
-      const data = [new ClipboardItem({ 
-        'text/html': blobHtml,
-        'text/plain': blobText
-      })];
-      
+      const data = [new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })];
       await navigator.clipboard.write(data);
-      alert("已複製表格！請切換到 Google Docs 並貼上 (Ctrl+V)。\n(Table copied! Switch to Google Docs and Paste)");
+      alert("已複製表格！(Table copied!)");
     } catch (err) {
       console.error('Failed to copy formatted text: ', err);
       copyExportText();
     }
   };
 
-  // CSV Download for Sheets
   const downloadCSV = () => {
     if (!result) return;
     const csv = generateCSV(result);
@@ -159,7 +159,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen pb-20 font-sans selection:bg-poker-green selection:text-black">
       
-      {/* Header with Glass Effect */}
+      {/* Header */}
       <header className="sticky top-0 z-40 glass-panel border-x-0 border-t-0 bg-opacity-40 backdrop-blur-xl">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
             <div className="flex items-center space-x-3">
@@ -170,15 +170,28 @@ const App: React.FC = () => {
                     <h1 className="text-xl font-bold text-white tracking-tight">
                         Poker<span className="text-poker-green">Pro</span>
                     </h1>
-                    <p className="text-xs text-gray-400">Settlement Calc</p>
+                    <div className="flex items-center space-x-2">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        </span>
+                        <p className="text-xs text-green-400 font-mono">Live Sync</p>
+                    </div>
                 </div>
             </div>
-            <button 
-                onClick={copyLink}
-                className="flex items-center space-x-2 bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 px-3 py-2 rounded-lg text-sm transition-all hover:scale-105 active:scale-95"
-            >
-                <ShareIcon /> <span className="hidden md:inline">Save Link</span>
-            </button>
+            
+            <div className="flex items-center space-x-2 md:space-x-4">
+                <div className="hidden md:flex items-center px-3 py-1.5 bg-black/20 rounded-lg border border-white/5">
+                    <UsersIcon />
+                    <span className="ml-2 text-xs font-bold text-gray-300">{playerCount} Online</span>
+                </div>
+                <button 
+                    onClick={copyLink}
+                    className="flex items-center space-x-2 bg-poker-green/10 hover:bg-poker-green/20 text-poker-green border border-poker-green/20 px-3 py-2 rounded-lg text-sm transition-all hover:scale-105 active:scale-95"
+                >
+                    <ShareIcon /> <span className="hidden md:inline">Invite Friends</span>
+                </button>
+            </div>
         </div>
       </header>
 
@@ -186,7 +199,6 @@ const App: React.FC = () => {
         
         {/* Settings Card */}
         <section className="glass-panel rounded-3xl overflow-hidden relative group">
-           {/* Glow Effect */}
            <div className="absolute top-0 right-0 w-32 h-32 bg-poker-green/10 rounded-full blur-3xl group-hover:bg-poker-green/20 transition-all duration-700"></div>
 
           <div className="px-8 py-5 border-b border-glass-border flex items-center justify-between">
@@ -201,7 +213,7 @@ const App: React.FC = () => {
                  <input 
                    type="number" 
                    value={settings.chipPerBuyIn}
-                   onChange={(e) => setSettings({...settings, chipPerBuyIn: Number(e.target.value)})}
+                   onChange={(e) => updateSettings({ chipPerBuyIn: Number(e.target.value) })}
                    className="glass-input w-full rounded-xl py-4 px-5 text-white text-lg font-medium outline-none placeholder-gray-500"
                  />
                </div>
@@ -217,16 +229,11 @@ const App: React.FC = () => {
                    <input 
                     type="number" 
                     value={settings.cashPerBuyIn}
-                    onChange={(e) => setSettings({...settings, cashPerBuyIn: Number(e.target.value)})}
+                    onChange={(e) => updateSettings({ cashPerBuyIn: Number(e.target.value) })}
                     className="glass-input w-full rounded-xl py-4 pl-10 pr-5 text-white text-lg font-medium outline-none"
                    />
                  </div>
                </div>
-            </div>
-            <div className="mt-6 flex justify-center">
-                 <div className="px-4 py-1 rounded-full bg-white/5 border border-white/5 text-xs text-gray-400 font-medium">
-                    Exchange Rate: <span className="text-poker-gold ml-1">{(settings.cashPerBuyIn / settings.chipPerBuyIn).toFixed(4)}</span>
-                 </div>
             </div>
           </div>
         </section>
@@ -243,7 +250,7 @@ const App: React.FC = () => {
                  匯入 (Import)
                </button>
                <button 
-                 onClick={handleAddPlayer}
+                 onClick={() => addPlayer()}
                  className="px-4 py-2 text-sm bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white border border-white/10 rounded-xl transition-all shadow-lg flex items-center"
                >
                  <PlusIcon /> <span className="ml-1">Add</span>
@@ -263,7 +270,7 @@ const App: React.FC = () => {
                             匯入資料
                         </button>
                         <button 
-                            onClick={handleAddPlayer}
+                            onClick={() => addPlayer()}
                             className="px-5 py-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
                         >
                             新增玩家
@@ -288,7 +295,7 @@ const App: React.FC = () => {
                             <input 
                             type="text" 
                             value={player.name}
-                            onChange={(e) => handleUpdatePlayer(player.id, 'name', e.target.value)}
+                            onChange={(e) => updatePlayer({ id: player.id, field: 'name', value: e.target.value })}
                             className="w-full bg-transparent text-lg text-white font-medium border-b border-transparent focus:border-poker-green placeholder-gray-600 outline-none transition-colors"
                             placeholder="Player Name"
                             />
@@ -302,7 +309,7 @@ const App: React.FC = () => {
                                 <input 
                                     type="number" 
                                     value={player.buyInCount}
-                                    onChange={(e) => handleUpdatePlayer(player.id, 'buyInCount', parseFloat(e.target.value) || 0)}
+                                    onChange={(e) => updatePlayer({ id: player.id, field: 'buyInCount', value: parseFloat(e.target.value) || 0 })}
                                     className="glass-input w-20 text-center rounded-lg py-2 text-white outline-none"
                                 />
                             </div>
@@ -314,15 +321,15 @@ const App: React.FC = () => {
                             <input 
                                 type="number" 
                                 value={player.finalChips}
-                                onChange={(e) => handleUpdatePlayer(player.id, 'finalChips', parseFloat(e.target.value) || 0)}
+                                onChange={(e) => updatePlayer({ id: player.id, field: 'finalChips', value: parseFloat(e.target.value) || 0 })}
                                 className="glass-input w-full text-right rounded-lg py-2 px-3 text-poker-gold font-bold outline-none"
                             />
                         </div>
 
-                        {/* Delete - only visible on mobile row or desktop end */}
+                        {/* Delete */}
                         <div className="col-span-2 md:col-span-1 flex justify-end">
                             <button 
-                            onClick={() => handleRemovePlayer(player.id)}
+                            onClick={() => removePlayer(player.id)}
                             className="text-gray-600 hover:text-red-400 p-2 transition-colors"
                             >
                             <TrashIcon />
@@ -476,7 +483,7 @@ const App: React.FC = () => {
       <ImportModal 
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
-        onImport={(newPlayers) => setPlayers(prev => [...prev, ...newPlayers])}
+        onImport={(newPlayers) => importPlayers(newPlayers)}
       />
 
       <footer className="mt-16 text-center text-gray-500 text-sm">
