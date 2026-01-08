@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Player, CalculationResult } from './types';
 import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
 import { ImportModal } from './components/ImportModal';
@@ -28,37 +28,46 @@ const UsersIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
 );
 
-const App: React.FC = () => {
+interface AppProps {
+  currentUser: {
+    id: string;
+    name: string;
+    isHost: boolean;
+    initialSettings?: { chip: number; cash: number };
+  };
+}
+
+const App: React.FC<AppProps> = ({ currentUser }) => {
   // Liveblocks Hooks
   const others = useOthers();
   const playerCount = others.length + 1; // +1 for self
 
-  // Access Storage directly (Immutable style via Liveblocks)
+  // Access Storage directly
   const players = useStorage((root) => root.players);
   const settings = useStorage((root) => root.settings);
 
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [activeTab, setActiveTab] = useState<'transfers' | 'profits' | 'export'>('transfers');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const hasAutoJoined = useRef(false);
 
   // Mutations
   const updateSettings = useMutation(({ storage }, newSettings: Partial<typeof settings>) => {
     const s = storage.get("settings");
-    // Safety check in case settings object is missing
     if (!s) return;
     
     if (newSettings.cashPerBuyIn !== undefined) s.set("cashPerBuyIn", newSettings.cashPerBuyIn);
     if (newSettings.chipPerBuyIn !== undefined) s.set("chipPerBuyIn", newSettings.chipPerBuyIn);
   }, []);
 
-  const addPlayer = useMutation(({ storage }) => {
+  // Generic add player (for Host manual add or Auto-join)
+  const addPlayer = useMutation(({ storage }, playerDetails: { id?: string, name: string }) => {
     const list = storage.get("players");
-    // Safety check
     if (!list) return;
 
     list.push({
-      id: Date.now().toString(),
-      name: `Player ${list.length + 1}`,
+      id: playerDetails.id || Date.now().toString(),
+      name: playerDetails.name,
       buyInCount: 1,
       finalChips: 0
     });
@@ -90,7 +99,47 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Guard clause: Ensure storage is loaded
+  // Initialization & Auto-Join Logic
+  useEffect(() => {
+    if (!players || !settings) return;
+
+    // 1. If Host, initialize settings (only once effectively due to mutation nature, but safe to set)
+    if (currentUser.isHost && currentUser.initialSettings) {
+      // We check if values differ to avoid loop, or rely on liveblocks batching.
+      // Better to only set if using defaults? For now, we trust the Host's intent from Lobby.
+      // But to prevent overwriting if someone else changed it, we might want to check.
+      // However, Liveblocks storage persists. Let's only set if we just created the room?
+      // For simplicity in this logic: if we passed initialSettings, we update it.
+      // Note: in a real app, we might check if 'initialized' flag exists.
+      // Here, relying on the user flow is "okay" but better to check if settings are default.
+      if (settings.chipPerBuyIn === 1000 && settings.cashPerBuyIn === 500 && currentUser.initialSettings) {
+          if (currentUser.initialSettings.chip !== 1000 || currentUser.initialSettings.cash !== 500) {
+             updateSettings({ 
+                 chipPerBuyIn: currentUser.initialSettings.chip, 
+                 cashPerBuyIn: currentUser.initialSettings.cash 
+             });
+          }
+      }
+    }
+
+    // 2. Auto-Join logic
+    if (!hasAutoJoined.current) {
+        const alreadyJoined = players.some(p => p.id === currentUser.id);
+        
+        // Also check by name to prevent duplicates if ID changed (e.g. clear cache) but name persists?
+        // No, ID is the source of truth.
+        
+        if (!alreadyJoined) {
+            addPlayer({ id: currentUser.id, name: currentUser.name });
+            hasAutoJoined.current = true;
+        } else {
+             hasAutoJoined.current = true;
+        }
+    }
+  }, [players, settings, currentUser, addPlayer, updateSettings]);
+
+
+  // Guard clause
   if (!settings || !players) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
@@ -103,7 +152,6 @@ const App: React.FC = () => {
   }
 
   const handleCalculate = () => {
-    // players and settings are read-only here, perfect for calculation
     const res = calculateSettlement(players, settings);
     setResult(res);
     setTimeout(() => {
@@ -189,11 +237,10 @@ const App: React.FC = () => {
                         Poker<span className="text-poker-green">Pro</span>
                     </h1>
                     <div className="flex items-center space-x-2">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                        </span>
-                        <p className="text-xs text-green-400 font-mono">Live Sync</p>
+                        <span className={`inline-block w-2 h-2 rounded-full ${currentUser.isHost ? 'bg-poker-gold' : 'bg-blue-400'}`}></span>
+                        <p className="text-xs text-gray-400 font-mono">
+                            {currentUser.isHost ? 'HOST' : 'PLAYER'}: <span className="text-white">{currentUser.name}</span>
+                        </p>
                     </div>
                 </div>
             </div>
@@ -216,13 +263,16 @@ const App: React.FC = () => {
       <div className="container mx-auto px-4 max-w-4xl mt-8 space-y-8">
         
         {/* Settings Card */}
-        <section className="glass-panel rounded-3xl overflow-hidden relative group">
-           <div className="absolute top-0 right-0 w-32 h-32 bg-poker-green/10 rounded-full blur-3xl group-hover:bg-poker-green/20 transition-all duration-700"></div>
+        <section className={`glass-panel rounded-3xl overflow-hidden relative group transition-opacity ${!currentUser.isHost ? 'opacity-80' : ''}`}>
+           {currentUser.isHost && (
+             <div className="absolute top-0 right-0 w-32 h-32 bg-poker-green/10 rounded-full blur-3xl group-hover:bg-poker-green/20 transition-all duration-700"></div>
+           )}
 
           <div className="px-8 py-5 border-b border-glass-border flex items-center justify-between">
              <h2 className="text-lg font-bold text-white flex items-center">
                <span className="mr-2">🎲</span> 遊戲設定 (Settings)
              </h2>
+             {!currentUser.isHost && <span className="text-xs text-gray-500 border border-gray-700 px-2 py-1 rounded">Read Only</span>}
           </div>
           <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -232,7 +282,8 @@ const App: React.FC = () => {
                    type="number" 
                    value={settings.chipPerBuyIn}
                    onChange={(e) => updateSettings({ chipPerBuyIn: Number(e.target.value) })}
-                   className="glass-input w-full rounded-xl py-4 px-5 text-white text-lg font-medium outline-none placeholder-gray-500"
+                   disabled={!currentUser.isHost}
+                   className={`glass-input w-full rounded-xl py-4 px-5 text-white text-lg font-medium outline-none ${!currentUser.isHost ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
                  />
                </div>
                
@@ -248,7 +299,8 @@ const App: React.FC = () => {
                     type="number" 
                     value={settings.cashPerBuyIn}
                     onChange={(e) => updateSettings({ cashPerBuyIn: Number(e.target.value) })}
-                    className="glass-input w-full rounded-xl py-4 pl-10 pr-5 text-white text-lg font-medium outline-none"
+                    disabled={!currentUser.isHost}
+                    className={`glass-input w-full rounded-xl py-4 pl-10 pr-5 text-white text-lg font-medium outline-none ${!currentUser.isHost ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
                    />
                  </div>
                </div>
@@ -260,103 +312,108 @@ const App: React.FC = () => {
         <section className="glass-panel rounded-3xl">
            <div className="px-8 py-5 border-b border-glass-border flex justify-between items-center flex-wrap gap-3">
              <h2 className="text-lg font-bold text-white flex items-center"><span className="mr-2">🃏</span> 玩家列表 (Players)</h2>
-             <div className="flex space-x-3">
-               <button 
-                 onClick={() => setIsImportModalOpen(true)}
-                 className="px-4 py-2 text-sm text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all"
-               >
-                 匯入 (Import)
-               </button>
-               <button 
-                 onClick={() => addPlayer()}
-                 className="px-4 py-2 text-sm bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white border border-white/10 rounded-xl transition-all shadow-lg flex items-center"
-               >
-                 <PlusIcon /> <span className="ml-1">Add</span>
-               </button>
-             </div>
+             
+             {/* Only Host sees Import/Add buttons */}
+             {currentUser.isHost && (
+                <div className="flex space-x-3">
+                    <button 
+                        onClick={() => setIsImportModalOpen(true)}
+                        className="px-4 py-2 text-sm text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all"
+                    >
+                        匯入 (Import)
+                    </button>
+                    <button 
+                        onClick={() => addPlayer({ name: `Player ${players.length + 1}` })}
+                        className="px-4 py-2 text-sm bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white border border-white/10 rounded-xl transition-all shadow-lg flex items-center"
+                    >
+                        <PlusIcon /> <span className="ml-1">Add</span>
+                    </button>
+                </div>
+             )}
           </div>
           
           <div className="p-4 md:p-8 space-y-4">
             {players.length === 0 && (
                 <div className="text-center py-12 text-gray-500 border-2 border-dashed border-white/5 rounded-2xl flex flex-col items-center">
                     <p className="mb-4 text-lg font-medium">尚無玩家 (No Players)</p>
-                    <div className="flex justify-center space-x-4">
-                        <button 
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="px-5 py-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
-                        >
-                            匯入資料
-                        </button>
-                        <button 
-                            onClick={() => addPlayer()}
-                            className="px-5 py-2 text-sm bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-colors"
-                        >
-                            新增玩家
-                        </button>
-                    </div>
                 </div>
             )}
 
-            {players.map((player, index) => (
-              <div key={player.id} className="group relative bg-black/20 hover:bg-black/40 border border-white/5 rounded-2xl p-4 transition-all duration-300">
-                <div className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-1 h-12 bg-poker-green rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                
-                <div className="flex flex-col md:flex-row gap-4 items-center">
-                    <div className="hidden md:flex w-8 h-8 rounded-full bg-white/5 items-center justify-center text-xs font-bold text-gray-500">
-                        {index + 1}
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-12 gap-4 w-full items-center">
-                        {/* Name */}
-                        <div className="col-span-2 md:col-span-4">
-                            <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Name</label>
-                            <input 
-                            type="text" 
-                            value={player.name}
-                            onChange={(e) => updatePlayer({ id: player.id, field: 'name', value: e.target.value })}
-                            className="w-full bg-transparent text-lg text-white font-medium border-b border-transparent focus:border-poker-green placeholder-gray-600 outline-none transition-colors"
-                            placeholder="Player Name"
-                            />
+            {players.map((player, index) => {
+              const isMe = player.id === currentUser.id;
+              const canEdit = currentUser.isHost || isMe;
+              // If I am a player, I cannot edit name unless I am Host. I can only edit Chips/Buyins.
+              // Prompt said: "Rest of people can only input their own details". Assuming this means buy-ins/chips. 
+              // Usually name is fixed upon join, but Host can edit names.
+              const canEditName = currentUser.isHost; // Or maybe allow user to fix their own name? Let's restrict to Host to prevent confusion.
+              
+              return (
+                <div key={player.id} className={`group relative rounded-2xl p-4 transition-all duration-300 border ${isMe ? 'bg-poker-green/5 border-poker-green/30' : 'bg-black/20 border-white/5'}`}>
+                    {isMe && <div className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-1 h-12 bg-poker-green rounded-full shadow-[0_0_10px_#00dc82]"></div>}
+                    
+                    <div className="flex flex-col md:flex-row gap-4 items-center">
+                        <div className="hidden md:flex w-8 h-8 rounded-full bg-white/5 items-center justify-center text-xs font-bold text-gray-500">
+                            {index + 1}
                         </div>
 
-                        {/* Buy-ins */}
-                        <div className="col-span-1 md:col-span-3">
-                            <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Buy-ins</label>
-                            <div className="flex items-center md:justify-center">
-                                <span className="text-gray-500 text-xs mr-2 md:hidden">x</span>
+                        <div className="grid grid-cols-2 md:grid-cols-12 gap-4 w-full items-center">
+                            {/* Name */}
+                            <div className="col-span-2 md:col-span-4">
+                                <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Name</label>
                                 <input 
-                                    type="number" 
-                                    value={player.buyInCount}
-                                    onChange={(e) => updatePlayer({ id: player.id, field: 'buyInCount', value: parseFloat(e.target.value) || 0 })}
-                                    className="glass-input w-20 text-center rounded-lg py-2 text-white outline-none"
+                                type="text" 
+                                value={player.name}
+                                onChange={(e) => updatePlayer({ id: player.id, field: 'name', value: e.target.value })}
+                                disabled={!canEditName}
+                                className={`w-full bg-transparent text-lg text-white font-medium border-b border-transparent placeholder-gray-600 outline-none transition-colors ${canEditName ? 'focus:border-poker-green' : 'cursor-not-allowed opacity-80'}`}
+                                placeholder="Player Name"
                                 />
                             </div>
-                        </div>
 
-                        {/* Chips */}
-                        <div className="col-span-1 md:col-span-4">
-                            <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Final Chips</label>
-                            <input 
-                                type="number" 
-                                value={player.finalChips}
-                                onChange={(e) => updatePlayer({ id: player.id, field: 'finalChips', value: parseFloat(e.target.value) || 0 })}
-                                className="glass-input w-full text-right rounded-lg py-2 px-3 text-poker-gold font-bold outline-none"
-                            />
-                        </div>
+                            {/* Buy-ins */}
+                            <div className="col-span-1 md:col-span-3">
+                                <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Buy-ins</label>
+                                <div className="flex items-center md:justify-center">
+                                    <span className="text-gray-500 text-xs mr-2 md:hidden">x</span>
+                                    <input 
+                                        type="number" 
+                                        value={player.buyInCount}
+                                        onChange={(e) => updatePlayer({ id: player.id, field: 'buyInCount', value: parseFloat(e.target.value) || 0 })}
+                                        disabled={!canEdit}
+                                        className={`glass-input w-20 text-center rounded-lg py-2 text-white outline-none ${!canEdit ? 'cursor-not-allowed opacity-50 bg-black/40' : ''}`}
+                                    />
+                                </div>
+                            </div>
 
-                        {/* Delete */}
-                        <div className="col-span-2 md:col-span-1 flex justify-end">
-                            <button 
-                            onClick={() => removePlayer(player.id)}
-                            className="text-gray-600 hover:text-red-400 p-2 transition-colors"
-                            >
-                            <TrashIcon />
-                            </button>
+                            {/* Chips */}
+                            <div className="col-span-1 md:col-span-4">
+                                <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Final Chips</label>
+                                <input 
+                                    type="number" 
+                                    value={player.finalChips}
+                                    onChange={(e) => updatePlayer({ id: player.id, field: 'finalChips', value: parseFloat(e.target.value) || 0 })}
+                                    disabled={!canEdit}
+                                    className={`glass-input w-full text-right rounded-lg py-2 px-3 text-poker-gold font-bold outline-none ${!canEdit ? 'cursor-not-allowed opacity-50 bg-black/40' : ''}`}
+                                />
+                            </div>
+
+                            {/* Delete (Only Host) */}
+                            {currentUser.isHost && (
+                                <div className="col-span-2 md:col-span-1 flex justify-end">
+                                    <button 
+                                    onClick={() => removePlayer(player.id)}
+                                    className="text-gray-600 hover:text-red-400 p-2 transition-colors"
+                                    title="Kick Player"
+                                    >
+                                    <TrashIcon />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="p-6 border-t border-glass-border">
