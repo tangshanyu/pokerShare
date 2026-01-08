@@ -227,9 +227,10 @@ const Root = () => {
   return (
     <RoomProvider 
       id={roomId} 
-      initialPresence={{}}
+      initialPresence={{ name: userState.name }} // Pass name to presence
       initialStorage={{
         players: new LiveList([]),
+        messages: new LiveList([]),
         settings: new LiveObject({
           chipPerBuyIn: 1000,
           cashPerBuyIn: 500

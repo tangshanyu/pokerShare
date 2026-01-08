@@ -1,7 +1,7 @@
 import { createClient } from "@liveblocks/client";
 import { createRoomContext } from "@liveblocks/react";
 import { LiveList, LiveObject } from "@liveblocks/client";
-import { Player, GameSettings } from "./types";
+import { Player, GameSettings, ChatMessage } from "./types";
 
 // Helper to safely get the API key in different environments
 const getApiKey = (): string | undefined => {
@@ -38,13 +38,14 @@ const client = createClient({
 
 // Presence represents the properties of a user in the room (cursor, selection, etc.)
 type Presence = {
-  // We can add cursor positions here later if needed
+  name?: string;
 };
 
 // Storage represents the shared document that persists in the room
 type Storage = {
   players: LiveList<Player>;
   settings: LiveObject<GameSettings>;
+  messages: LiveList<ChatMessage>;
 };
 
 export const {

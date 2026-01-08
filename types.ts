@@ -23,3 +23,11 @@ export interface CalculationResult {
   totalBalance: number; // Should be 0 ideally
   isBalanced: boolean;
 }
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}

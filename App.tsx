@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Player, CalculationResult } from './types';
 import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
 import { ImportModal } from './components/ImportModal';
-import { useStorage, useMutation, useOthers } from './liveblocks.config';
+import { ChatRoom } from './components/ChatRoom';
+import { useStorage, useMutation, useOthers, useSelf } from './liveblocks.config';
 import { LiveObject } from '@liveblocks/client';
 
 // Icons
@@ -16,7 +17,7 @@ const PlusIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 );
 const TrashIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
 );
 const DocsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -26,6 +27,9 @@ const SheetIcon = () => (
 );
 const UsersIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+);
+const ChatIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
 );
 
 interface AppProps {
@@ -40,6 +44,7 @@ interface AppProps {
 const App: React.FC<AppProps> = ({ currentUser }) => {
   // Liveblocks Hooks
   const others = useOthers();
+  const self = useSelf();
   const playerCount = others.length + 1; // +1 for self
 
   // Access Storage directly
@@ -49,6 +54,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [activeTab, setActiveTab] = useState<'transfers' | 'profits' | 'export'>('transfers');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const hasAutoJoined = useRef(false);
 
   // Mutations
@@ -88,13 +94,14 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
     }
   }, []);
 
-  const updatePlayer = useMutation(({ storage }, { id, field, value }: { id: string, field: keyof Player, value: string | number }) => {
+  // Fix: Explicitly structured mutation to ensure updates work
+  const updatePlayer = useMutation(({ storage }, payload: { id: string, field: keyof Player, value: string | number }) => {
     const list = storage.get("players");
     if (!list) return;
-    const index = list.findIndex(p => p.id === id);
+    const index = list.findIndex(p => p.id === payload.id);
     if (index !== -1) {
       const player = list.get(index);
-      const updatedPlayer = { ...player, [field]: value };
+      const updatedPlayer = { ...player, [payload.field]: payload.value };
       list.set(index, updatedPlayer);
     }
   }, []);
@@ -105,13 +112,6 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
 
     // 1. If Host, initialize settings (only once effectively due to mutation nature, but safe to set)
     if (currentUser.isHost && currentUser.initialSettings) {
-      // We check if values differ to avoid loop, or rely on liveblocks batching.
-      // Better to only set if using defaults? For now, we trust the Host's intent from Lobby.
-      // But to prevent overwriting if someone else changed it, we might want to check.
-      // However, Liveblocks storage persists. Let's only set if we just created the room?
-      // For simplicity in this logic: if we passed initialSettings, we update it.
-      // Note: in a real app, we might check if 'initialized' flag exists.
-      // Here, relying on the user flow is "okay" but better to check if settings are default.
       if (settings.chipPerBuyIn === 1000 && settings.cashPerBuyIn === 500 && currentUser.initialSettings) {
           if (currentUser.initialSettings.chip !== 1000 || currentUser.initialSettings.cash !== 500) {
              updateSettings({ 
@@ -125,9 +125,6 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
     // 2. Auto-Join logic
     if (!hasAutoJoined.current) {
         const alreadyJoined = players.some(p => p.id === currentUser.id);
-        
-        // Also check by name to prevent duplicates if ID changed (e.g. clear cache) but name persists?
-        // No, ID is the source of truth.
         
         if (!alreadyJoined) {
             addPlayer({ id: currentUser.id, name: currentUser.name });
@@ -222,6 +219,10 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
     document.body.removeChild(link);
   };
 
+  const handleOpenChat = () => {
+      setIsChatOpen(true);
+  };
+
   return (
     <div className="min-h-screen pb-20 font-sans selection:bg-poker-green selection:text-black">
       
@@ -246,10 +247,39 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
             </div>
             
             <div className="flex items-center space-x-2 md:space-x-4">
-                <div className="hidden md:flex items-center px-3 py-1.5 bg-black/20 rounded-lg border border-white/5">
+                {/* Online Users with Tooltip */}
+                <div className="hidden md:flex relative group items-center px-3 py-1.5 bg-black/20 rounded-lg border border-white/5 cursor-pointer">
                     <UsersIcon />
                     <span className="ml-2 text-xs font-bold text-gray-300">{playerCount} Online</span>
+                    
+                    {/* Tooltip */}
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a20] border border-white/10 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden cursor-default">
+                       <div className="p-2">
+                          <div className="px-3 py-2 text-xs font-bold text-gray-500 uppercase border-b border-white/5 mb-1">Users (Click to Chat)</div>
+                          {self && (
+                              <div onClick={handleOpenChat} className="px-3 py-2 text-sm text-poker-green flex items-center hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
+                                  <span className="w-1.5 h-1.5 bg-poker-green rounded-full mr-2"></span>
+                                  {self.presence.name || 'You'} (Me)
+                              </div>
+                          )}
+                          {others.map((user) => (
+                             <div onClick={handleOpenChat} key={user.connectionId} className="px-3 py-2 text-sm text-gray-300 flex items-center hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
+                                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full mr-2"></span>
+                                  {user.presence.name || `User ${user.connectionId}`}
+                             </div>
+                          ))}
+                       </div>
+                    </div>
                 </div>
+
+                {/* Mobile Chat Toggle Button (also visible on desktop for convenience) */}
+                <button 
+                    onClick={() => setIsChatOpen(!isChatOpen)}
+                    className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${isChatOpen ? 'bg-poker-green text-black border-poker-green' : 'bg-black/20 text-gray-400 border-white/5 hover:text-white'}`}
+                >
+                    <ChatIcon />
+                </button>
+
                 <button 
                     onClick={copyLink}
                     className="flex items-center space-x-2 bg-poker-green/10 hover:bg-poker-green/20 text-poker-green border border-poker-green/20 px-3 py-2 rounded-lg text-sm transition-all hover:scale-105 active:scale-95"
@@ -342,10 +372,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
             {players.map((player, index) => {
               const isMe = player.id === currentUser.id;
               const canEdit = currentUser.isHost || isMe;
-              // If I am a player, I cannot edit name unless I am Host. I can only edit Chips/Buyins.
-              // Prompt said: "Rest of people can only input their own details". Assuming this means buy-ins/chips. 
-              // Usually name is fixed upon join, but Host can edit names.
-              const canEditName = currentUser.isHost; // Or maybe allow user to fix their own name? Let's restrict to Host to prevent confusion.
+              // If isHost is true, they can edit name.
+              const canEditName = currentUser.isHost;
               
               return (
                 <div key={player.id} className={`group relative rounded-2xl p-4 transition-all duration-300 border ${isMe ? 'bg-poker-green/5 border-poker-green/30' : 'bg-black/20 border-white/5'}`}>
@@ -378,7 +406,10 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                                     <input 
                                         type="number" 
                                         value={player.buyInCount}
-                                        onChange={(e) => updatePlayer({ id: player.id, field: 'buyInCount', value: parseFloat(e.target.value) || 0 })}
+                                        onChange={(e) => {
+                                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                            updatePlayer({ id: player.id, field: 'buyInCount', value: isNaN(val) ? 0 : val });
+                                        }}
                                         disabled={!canEdit}
                                         className={`glass-input w-20 text-center rounded-lg py-2 text-white outline-none ${!canEdit ? 'cursor-not-allowed opacity-50 bg-black/40' : ''}`}
                                     />
@@ -391,7 +422,10 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                                 <input 
                                     type="number" 
                                     value={player.finalChips}
-                                    onChange={(e) => updatePlayer({ id: player.id, field: 'finalChips', value: parseFloat(e.target.value) || 0 })}
+                                    onChange={(e) => {
+                                        const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                        updatePlayer({ id: player.id, field: 'finalChips', value: isNaN(val) ? 0 : val });
+                                    }}
                                     disabled={!canEdit}
                                     className={`glass-input w-full text-right rounded-lg py-2 px-3 text-poker-gold font-bold outline-none ${!canEdit ? 'cursor-not-allowed opacity-50 bg-black/40' : ''}`}
                                 />
@@ -559,6 +593,12 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
         onImport={(newPlayers) => importPlayers(newPlayers)}
+      />
+
+      <ChatRoom 
+        currentUser={currentUser}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
       />
 
       <footer className="mt-16 text-center text-gray-500 text-sm">
