@@ -1,0 +1,5 @@
+{
+  "name": "Poker Settlement Pro",
+  "description": "A dark-themed Texas Hold'em chip settlement calculator with LINE sharing capabilities and URL-based state management.",
+  "requestFramePermissions": []
+}
