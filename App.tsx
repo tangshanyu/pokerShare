@@ -35,6 +35,9 @@ const ChatIcon = () => (
 const LockIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
 );
+const ShieldIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+);
 
 interface AppProps {
   currentUser: {
@@ -233,7 +236,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const handleLogoClick = () => {
     const newCount = logoClickCount + 1;
     setLogoClickCount(newCount);
-    if (newCount === 5) {
+    // Easier trigger: 3 clicks instead of 5
+    if (newCount >= 3) {
         setIsManagerOpen(true);
         setLogoClickCount(0);
     }
@@ -247,8 +251,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
       {/* Header */}
       <header className="sticky top-0 z-40 glass-panel border-x-0 border-t-0 bg-opacity-40 backdrop-blur-xl">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div className="flex items-center space-x-3 cursor-pointer select-none" onClick={handleLogoClick}>
-                <div className={`bg-gradient-to-br from-poker-green to-emerald-700 p-2 rounded-xl shadow-lg shadow-poker-green/20 ${logoClickCount > 0 ? 'animate-pulse' : ''}`}>
+            <div className="flex items-center space-x-3 cursor-pointer select-none group" onClick={handleLogoClick}>
+                <div className={`bg-gradient-to-br from-poker-green to-emerald-700 p-2 rounded-xl shadow-lg shadow-poker-green/20 ${logoClickCount > 0 ? 'animate-pulse' : ''} transition-transform group-active:scale-95`}>
                     <ChipsIcon />
                 </div>
                 <div>
@@ -265,6 +269,17 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
             </div>
             
             <div className="flex items-center space-x-2 md:space-x-4">
+                {/* Admin/Manager Button (Host Only) - Explicit button for better UX */}
+                {currentUser.isHost && (
+                    <button
+                        onClick={() => setIsManagerOpen(true)}
+                        className="flex items-center justify-center w-9 h-9 rounded-lg border border-white/5 bg-black/20 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
+                        title="Room Manager"
+                    >
+                        <ShieldIcon />
+                    </button>
+                )}
+
                 {/* Locked Badge */}
                 {isLocked && (
                     <div className="hidden md:flex items-center px-3 py-1.5 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold animate-pulse">

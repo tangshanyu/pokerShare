@@ -4,9 +4,10 @@ import { GameSettings } from '../types';
 interface RoomManagerProps {
   isOpen: boolean;
   onClose: () => void;
-  settings: GameSettings;
-  updateSettings: (newSettings: Partial<GameSettings>) => void;
-  isHost: boolean;
+  // Make these optional for "Lobby Mode" usage
+  settings?: GameSettings;
+  updateSettings?: (newSettings: Partial<GameSettings>) => void;
+  isHost?: boolean;
 }
 
 interface RoomHistory {
@@ -31,12 +32,15 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   onClose, 
   settings, 
   updateSettings, 
-  isHost 
+  isHost = false
 }) => {
   const [history, setHistory] = useState<RoomHistory[]>([]);
   const [globalRooms, setGlobalRooms] = useState<GlobalRoom[]>([]);
   const [isLoadingGlobal, setIsLoadingGlobal] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // Determine if we are inside a game or in the lobby
+  const isLobbyMode = !settings || !updateSettings;
 
   useEffect(() => {
     if (isOpen) {
@@ -80,6 +84,8 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   };
 
   const handleToggleLock = () => {
+    if (!settings || !updateSettings) return;
+
     const newVal = !settings.isLocked;
     const confirmMsg = newVal 
       ? "確定要鎖定房間嗎？鎖定後無法再編輯籌碼與新增玩家。" 
@@ -108,46 +114,50 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
       <div className="glass-panel w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-[#1a1a20] border border-poker-gold/30 flex flex-col max-h-[90vh]">
         
         {/* Header */}
         <div className="p-5 border-b border-white/10 flex justify-between items-center bg-poker-gold/10 shrink-0">
           <div className="flex items-center space-x-2">
             <span className="text-2xl">🕵️‍♂️</span>
-            <h2 className="text-xl font-bold text-poker-gold">Room Manager</h2>
+            <h2 className="text-xl font-bold text-poker-gold">
+              {isLobbyMode ? 'Lobby Manager' : 'Room Manager'}
+            </h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-2xl leading-none">&times;</button>
         </div>
 
         <div className="p-6 space-y-8 overflow-y-auto custom-scrollbar">
           
-          {/* Section 1: Room Control (Host Only) */}
-          <div>
-            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Current Room Control</h3>
-            {isHost ? (
-              <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
-                <div>
-                  <div className="text-white font-medium">Lock Room Status</div>
-                  <div className={`text-xs mt-1 ${settings.isLocked ? 'text-red-400' : 'text-green-400'}`}>
-                    {settings.isLocked ? '🔒 Locked (Read Only)' : '🔓 Open (Editable)'}
+          {/* Section 1: Room Control (Only show if inside a game) */}
+          {!isLobbyMode && settings && updateSettings && (
+            <div>
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Current Room Control</h3>
+              {isHost ? (
+                <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
+                  <div>
+                    <div className="text-white font-medium">Lock Room Status</div>
+                    <div className={`text-xs mt-1 ${settings.isLocked ? 'text-red-400' : 'text-green-400'}`}>
+                      {settings.isLocked ? '🔒 Locked (Read Only)' : '🔓 Open (Editable)'}
+                    </div>
                   </div>
+                  <button 
+                    onClick={handleToggleLock}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+                      settings.isLocked 
+                        ? 'bg-white/10 text-white hover:bg-white/20' 
+                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
+                    }`}
+                  >
+                    {settings.isLocked ? 'Unlock Game' : 'Finish & Lock Game'}
+                  </button>
                 </div>
-                <button 
-                  onClick={handleToggleLock}
-                  className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
-                    settings.isLocked 
-                      ? 'bg-white/10 text-white hover:bg-white/20' 
-                      : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-                  }`}
-                >
-                  {settings.isLocked ? 'Unlock Game' : 'Finish & Lock Game'}
-                </button>
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm italic">Only the Host can lock/unlock this room.</p>
-            )}
-          </div>
+              ) : (
+                <p className="text-gray-500 text-sm italic">Only the Host can lock/unlock this room.</p>
+              )}
+            </div>
+          )}
 
           {/* Section 2: Global Management (Server Side) */}
           <div>
