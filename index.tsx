@@ -598,8 +598,8 @@ const Root = () => {
         players: new LiveList([]),
         messages: new LiveList([]),
         settings: new LiveObject({
-          chipPerBuyIn: 1000,
-          cashPerBuyIn: 500,
+          chipPerBuyIn: userState.initialSettings?.chip || 1000,
+          cashPerBuyIn: userState.initialSettings?.cash || 500,
           isLocked: false
         })
       }}
