@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import { App } from './App';
 import { RoomProvider, hasApiKey, useStorage, useMutation } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 import { RoomManager } from './components/RoomManager';
+import { ReportsScreen } from './components/ReportsScreen';
 import { getKnownPlayers } from './utils/storage';
 
 const rootElement = document.getElementById('root');
@@ -85,7 +86,10 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
   // Default to selection mode (False = Dropdown, True = Input)
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newNameInput, setNewNameInput] = useState('');
-  const [hasValidatedInitial, setHasValidatedInitial] = useState(false);
+  
+  // Loading & Animation State
+  const [isDataReady, setIsDataReady] = useState(false);
+  const [shouldFadeIn, setShouldFadeIn] = useState(false);
 
   // Mutation to add name to cloud
   const addToCloud = useMutation(({ storage }, newName: string) => {
@@ -103,16 +107,23 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
 
   // Initial Validation: Ensure the name in localStorage actually exists in DB
   useEffect(() => {
-    if (!hasValidatedInitial && cloudDirectory !== undefined) {
+    // Only run this logic once when data first becomes available
+    if (!isDataReady && cloudDirectory !== undefined) {
       if (name) {
         // If current name is NOT in the list, clear it to force selection
+        // We only enforce this on initial load to prevent using stale localstorage names
         if (directoryList.length > 0 && !directoryList.includes(name)) {
            setName(''); 
         }
       }
-      setHasValidatedInitial(true);
+      
+      // Mark as ready
+      setIsDataReady(true);
+      
+      // Trigger Fade In animation shortly after render
+      setTimeout(() => setShouldFadeIn(true), 50);
     }
-  }, [cloudDirectory, name, setName, hasValidatedInitial, directoryList]);
+  }, [cloudDirectory, isDataReady, directoryList, name, setName]);
 
   const handleConfirmNewUser = () => {
       const trimmed = newNameInput.trim();
@@ -129,12 +140,22 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
       setNewNameInput('');
   };
 
-  if (!hasValidatedInitial) {
-     return <div className="h-16 w-full bg-white/5 rounded-xl animate-pulse"></div>;
+  // --- RENDER LOADING SKELETON ---
+  if (!isDataReady) {
+     return (
+       <div className="space-y-3">
+          <div className="flex justify-between items-center mb-1">
+             <div className="h-3 w-24 bg-white/10 rounded animate-pulse"></div>
+             <div className="h-3 w-32 bg-white/5 rounded animate-pulse"></div>
+          </div>
+          <div className="h-[52px] w-full bg-white/5 rounded-xl animate-pulse border border-white/5"></div>
+       </div>
+     );
   }
 
+  // --- RENDER CONTENT WITH FADE IN ---
   return (
-    <div className="space-y-3">
+    <div className={`space-y-3 transition-all duration-500 ease-out transform ${shouldFadeIn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
       <div className="flex justify-between items-center mb-1">
         <label className={`block text-xs font-bold uppercase transition-colors ${isCreatingNew ? 'text-blue-400' : 'text-poker-green'}`}>
           {isCreatingNew ? '建立新檔案 (Create New)' : '選擇玩家 (Select Player)'}
@@ -181,7 +202,7 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
             </div>
         </div>
       ) : (
-        <div className="relative animate-fade-in">
+        <div className="relative">
            <select
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -212,7 +233,15 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
 };
 
 // Component: Create Room Form (Inner)
-const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, roomId: string) => void, openManager: () => void }) => {
+const CreateRoomForm = ({ 
+    onJoin, 
+    openManager, 
+    onOpenReports 
+}: { 
+    onJoin: (state: UserState, roomId: string) => void, 
+    openManager: () => void,
+    onOpenReports: () => void 
+}) => {
   const [name, setName] = useState(localStorage.getItem('poker_user_name') || '');
   const [chipRatio, setChipRatio] = useState(1000);
   const [cashRatio, setCashRatio] = useState(500);
@@ -345,6 +374,17 @@ const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, ro
                 '🚀 建立房間 (Create)'
               )}
             </button>
+            
+            {/* View Reports Button */}
+            <div className="text-center pt-2">
+                <button 
+                   onClick={onOpenReports}
+                   className="text-xs text-gray-400 hover:text-poker-gold transition-colors flex items-center justify-center mx-auto"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    查看歷史報表 (View Reports)
+                </button>
+            </div>
           </div>
         </div>
       </div>
@@ -434,6 +474,25 @@ const CreateRoomScreen = (props: any) => (
   </div>
 );
 
+const ReportsPage = ({ onBack }: { onBack: () => void }) => (
+    <RoomProvider 
+       id={GLOBAL_DB_ROOM_ID} 
+       initialPresence={{}} 
+       initialStorage={{ gameLogs: new LiveList([]) }}
+     >
+       <ClientSideSuspense fallback={
+          <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
+             <div className="animate-pulse flex flex-col items-center">
+                 <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
+                 <div className="text-sm font-mono">Loading Reports...</div>
+             </div>
+          </div>
+       }>
+          {() => <ReportsScreen onBack={onBack} />}
+       </ClientSideSuspense>
+     </RoomProvider>
+);
+
 const JoinRoomScreen = (props: any) => (
   <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
      <RoomProvider 
@@ -481,13 +540,16 @@ const Root = () => {
   const [userState, setUserState] = useState<UserState | null>(null);
   const [roomId, setRoomId] = useState<string | null>(new URLSearchParams(window.location.search).get("room"));
   const [isLobbyManagerOpen, setIsLobbyManagerOpen] = useState(false);
-
-  // Check storage for re-hydration logic (optional, for simple refresh handling)
-  // For now, we force the lobby flow to ensure name input unless we wanted to persist session heavily.
+  const [currentView, setCurrentView] = useState<'home' | 'reports'>('home');
 
   if (!hasApiKey) return <MissingKeyScreen />;
 
-  // 1. If no room ID in URL, show Create Screen
+  // 0. Reports View
+  if (currentView === 'reports') {
+      return <ReportsPage onBack={() => setCurrentView('home')} />;
+  }
+
+  // 1. If no room ID in URL, show Create Screen (Home)
   if (!roomId) {
     return (
       <>
@@ -499,6 +561,7 @@ const Root = () => {
             window.history.pushState({}, '', `?room=${newRoomId}`);
           }}
           openManager={() => setIsLobbyManagerOpen(true)}
+          onOpenReports={() => setCurrentView('reports')}
         />
         <RoomManager 
           isOpen={isLobbyManagerOpen}

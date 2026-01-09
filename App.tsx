@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Player, CalculationResult } from './types';
 import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
-import { getKnownPlayers, saveGameLog } from './utils/storage';
+import { saveGameLog } from './utils/storage';
 import { ImportModal } from './components/ImportModal';
 import { PlayerDirectoryModal } from './components/PlayerDirectoryModal';
+import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
-import { useStorage, useMutation, useOthers, useSelf, RoomProvider } from './liveblocks.config';
+import { useStorage, useMutation, useOthers } from './liveblocks.config';
 import { LiveObject, LiveList } from '@liveblocks/client';
-import { ClientSideSuspense } from "@liveblocks/react";
 
-// Icons (unchanged)
+// Icons
 const ChipsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 12h.01"/><path d="M12 16h.01"/><path d="M8 12h.01"/><path d="M12 8h.01"/></svg>
 );
@@ -27,688 +27,358 @@ const DocsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
 );
 const SheetIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-);
-const UsersIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
 );
 const ChatIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 );
-const LockIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+const SettingsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+);
+const DirectoryIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
 );
 
-// Constant ID for the shared database room (Must match RoomManager)
-const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
-
-interface AppProps {
-  currentUser: {
-    id: string;
-    name: string;
-    isHost: boolean;
-    initialSettings?: { chip: number; cash: number };
-  };
-}
-
-// --- Hidden Component to Sync Current User to Global Directory ---
-const GlobalPlayerSyncer = ({ name }: { name: string }) => {
-    // useStorage returns a plain array (snapshot), not a LiveList instance
-    const cloudDirectory = useStorage((root) => root.playerDirectory);
-    
-    const addToCloud = useMutation(({ storage }, newName: string) => {
-        let list = storage.get("playerDirectory");
-        if (!list) {
-            list = new LiveList<string>([]);
-            storage.set("playerDirectory", list);
-        }
-        
-        // In mutation, 'list' is a LiveList, so we CAN use toArray() or direct methods if needed
-        // But logic here is fine
-        if (!list.toArray().includes(newName)) {
-            list.push(newName);
-        }
-    }, []);
-
-    useEffect(() => {
-        // useStorage returns undefined while loading, or a plain array when loaded.
-        // It does NOT have .toArray() method.
-        if (cloudDirectory && Array.isArray(cloudDirectory) && name && name.trim()) {
-            if (!cloudDirectory.includes(name.trim())) {
-                addToCloud(name.trim());
-            }
-        }
-    }, [cloudDirectory, name, addToCloud]);
-
-    return null;
-};
-
-const App: React.FC<AppProps> = ({ currentUser }) => {
-  // Liveblocks Hooks
-  const others = useOthers();
-  const self = useSelf();
-  const playerCount = others.length + 1; // +1 for self
-
-  // Access Storage directly
+export const App = ({ currentUser }: { currentUser: { id: string, name: string, isHost: boolean, initialSettings?: any } }) => {
   const players = useStorage((root) => root.players);
   const settings = useStorage((root) => root.settings);
-
-  const [result, setResult] = useState<CalculationResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'transfers' | 'profits' | 'export'>('transfers');
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isPlayerDirectoryOpen, setIsPlayerDirectoryOpen] = useState(false);
+  const messages = useStorage((root) => root.messages);
+  const others = useOthers();
+  
+  // Local UI State
+  const [calculation, setCalculation] = useState<CalculationResult | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
+  const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false); // New: Add Player Modal
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isManagerOpen, setIsManagerOpen] = useState(false);
-  const [logoClickCount, setLogoClickCount] = useState(0);
-  const [knownPlayers, setKnownPlayers] = useState<string[]>([]);
-  const hasAutoJoined = useRef(false);
+  
+  // Initialize room if host
+  const initRoom = useMutation(({ storage }) => {
+    if (!storage.get('players')) {
+       storage.set('players', new LiveList([]));
+    }
+    if (!storage.get('settings')) {
+       storage.set('settings', new LiveObject({
+          chipPerBuyIn: currentUser.initialSettings?.chip || 1000,
+          cashPerBuyIn: currentUser.initialSettings?.cash || 500,
+          isLocked: false
+       }));
+    }
+    if (!storage.get('messages')) {
+      storage.set('messages', new LiveList([]));
+    }
+  }, [currentUser]);
 
-  // Load known players for datalist suggestions
   useEffect(() => {
-    setKnownPlayers(getKnownPlayers());
-  }, []);
+    initRoom();
+  }, [initRoom]);
 
-  // Mutations
-  const updateSettings = useMutation(({ storage }, newSettings: Partial<typeof settings>) => {
-    const s = storage.get("settings");
-    if (!s) return;
+  // Calculations
+  useEffect(() => {
+    if (players && settings) {
+      const result = calculateSettlement(players, settings);
+      setCalculation(result);
+    }
+  }, [players, settings]);
+
+  // -- Mutations --
+
+  const addPlayer = useMutation(({ storage }, name: string) => {
+    const playersList = storage.get('players');
+    if (!playersList) return;
     
-    if (newSettings.cashPerBuyIn !== undefined) s.set("cashPerBuyIn", newSettings.cashPerBuyIn);
-    if (newSettings.chipPerBuyIn !== undefined) s.set("chipPerBuyIn", newSettings.chipPerBuyIn);
-    if (newSettings.isLocked !== undefined) s.set("isLocked", newSettings.isLocked);
-  }, []);
+    // Dupe check
+    if (playersList.toArray().some(p => p.name === name)) {
+        alert("此玩家已在列表中 (Player already exists)");
+        return;
+    }
 
-  // Generic add player (for Host manual add or Auto-join)
-  const addPlayer = useMutation(({ storage }, playerDetails: { id?: string, name: string }) => {
-    const list = storage.get("players");
-    if (!list) return;
-
-    list.push({
-      id: playerDetails.id || Date.now().toString(),
-      name: playerDetails.name,
+    playersList.push({
+      id: Date.now().toString() + Math.random().toString().slice(2),
+      name: name,
       buyInCount: 1,
       finalChips: 0
     });
   }, []);
 
-  const importPlayers = useMutation(({ storage }, newPlayers: Player[]) => {
-    const list = storage.get("players");
-    if (!list) return;
-    newPlayers.forEach(p => list.push(p));
+  const updatePlayer = useMutation(({ storage }, id: string, field: string, value: any) => {
+    const playersList = storage.get('players');
+    const index = playersList?.findIndex((p) => p.id === id);
+    if (index !== undefined && index !== -1 && playersList) {
+      const p = playersList.get(index);
+      playersList.set(index, { ...p, [field]: value });
+    }
   }, []);
 
   const removePlayer = useMutation(({ storage }, id: string) => {
-    const list = storage.get("players");
-    if (!list) return;
-    const index = list.findIndex(p => p.id === id);
-    if (index !== -1) {
-      list.delete(index);
+    const playersList = storage.get('players');
+    const index = playersList?.findIndex((p) => p.id === id);
+    if (index !== undefined && index !== -1 && playersList) {
+      playersList.delete(index);
     }
   }, []);
 
-  // Fix: Explicitly structured mutation to ensure updates work
-  const updatePlayer = useMutation(({ storage }, payload: { id: string, field: keyof Player, value: string | number }) => {
-    const list = storage.get("players");
-    if (!list) return;
-    const index = list.findIndex(p => p.id === payload.id);
-    if (index !== -1) {
-      const player = list.get(index);
-      const updatedPlayer = { ...player, [payload.field]: payload.value };
-      list.set(index, updatedPlayer);
+  const importPlayers = useMutation(({ storage }, newPlayers: Player[]) => {
+    const playersList = storage.get('players');
+    if (playersList) {
+       newPlayers.forEach(p => playersList.push(p));
     }
   }, []);
 
-  // Initialization & Auto-Join Logic
-  useEffect(() => {
-    if (!players || !settings) return;
+  const updateSettings = useMutation(({ storage }, newSettings: Partial<any>) => {
+    const s = storage.get('settings');
+    if (s) {
+      s.update(newSettings);
+    }
+  }, []);
 
-    // 1. If Host, initialize settings (only once effectively due to mutation nature, but safe to set)
-    if (currentUser.isHost && currentUser.initialSettings) {
-      if (settings.chipPerBuyIn === 1000 && settings.cashPerBuyIn === 500 && currentUser.initialSettings) {
-          if (currentUser.initialSettings.chip !== 1000 || currentUser.initialSettings.cash !== 500) {
-             updateSettings({ 
-                 chipPerBuyIn: currentUser.initialSettings.chip, 
-                 cashPerBuyIn: currentUser.initialSettings.cash 
-             });
-          }
+  // -- Handlers --
+
+  const handleShare = async () => {
+    if (!calculation || !settings) return;
+    
+    // settings is already an object from useStorage
+    const resultText = generateHTMLTable(calculation, settings);
+    const roomId = new URLSearchParams(window.location.search).get("room");
+    
+    // Save to history log on share
+    if (roomId) saveGameLog(roomId, calculation, currentUser.name);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Poker Settlement',
+          text: `Room: ${roomId}\nBalance: $${calculation.totalBalance}`,
+          url: window.location.href
+        });
+      } catch (e) {
+        console.log("Share cancelled");
       }
+    } else {
+      // Fallback: Copy Link
+      navigator.clipboard.writeText(window.location.href);
+      alert("連結已複製到剪貼簿 (Link Copied)");
     }
+  };
 
-    // 2. Auto-Join logic
-    if (!hasAutoJoined.current) {
-        const alreadyJoined = players.some(p => p.id === currentUser.id);
-        
-        if (!alreadyJoined) {
-            addPlayer({ id: currentUser.id, name: currentUser.name });
-            hasAutoJoined.current = true;
-        } else {
-             hasAutoJoined.current = true;
-        }
-    }
-  }, [players, settings, currentUser, addPlayer, updateSettings]);
+  const activePlayers = useMemo(() => {
+      const active = others.filter(o => o.presence.name);
+      const names = active.map(o => o.presence.name);
+      if (currentUser.name) names.unshift(currentUser.name);
+      return [...new Set(names)]; // Unique
+  }, [others, currentUser]);
 
+  const existingPlayerNames = players ? players.map(p => p.name) : [];
 
-  // Guard clause
-  if (!settings || !players) {
+  // Loading state
+  if (!players || !settings) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
-        <div className="animate-pulse flex flex-col items-center">
-           <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
-           <div className="text-sm font-mono">Initializing Room Storage...</div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center text-poker-green">
+        Loading Room Data...
       </div>
     );
   }
 
-  const handleCalculate = () => {
-    const res = calculateSettlement(players, settings);
-    setResult(res);
-    
-    // Auto-save history and queue for upload
-    const roomId = new URLSearchParams(window.location.search).get("room") || "unknown";
-    // We pass the current user's name as the Host Name for the record if they are host, or just 'Unknown'
-    const hostName = currentUser.isHost ? currentUser.name : 'Unknown';
-    saveGameLog(roomId, res, hostName);
-    setKnownPlayers(getKnownPlayers()); // Refresh list
-
-    setTimeout(() => {
-        document.getElementById('resultsSection')?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-  };
-
-  const handleDirectorySelect = (names: string[]) => {
-      // Add selected names that aren't already in the game
-      // We'll create "Guest" IDs for them
-      const newPlayers: Player[] = names.map(name => ({
-          id: `guest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          name: name,
-          buyInCount: 1,
-          finalChips: 0
-      }));
-      
-      importPlayers(newPlayers);
-  };
-
-  const copyLink = () => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url).then(() => {
-      alert("房間連結已複製！分享給朋友即可加入。\n(Room Link Copied!)");
-    });
-  };
-
-  const getExportText = () => {
-    if (!result) return '';
-    let text = `📅 德州撲克結算報告\n\n`;
-    text += `💰 1組買入: $${settings.cashPerBuyIn} (${settings.chipPerBuyIn} 籌碼)\n`;
-    text += `----------------\n`;
-    
-    text += `📊 損益情形:\n`;
-    result.players.sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0)).forEach(p => {
-        const sign = (p.netAmount || 0) >= 0 ? '+' : '';
-        text += `${p.name}: ${sign}$${p.netAmount}\n`;
-    });
-    
-    text += `\n💸 建議轉帳:\n`;
-    result.transfers.forEach(t => {
-        text += `${t.fromName} ➜ ${t.toName}: $${t.amount}\n`;
-    });
-
-    if (!result.isBalanced) {
-        text += `\n⚠️ 警告: 帳目不平衡 (差額: $${result.totalBalance})`;
-    }
-
-    return text;
-  };
-
-  const copyExportText = () => {
-    navigator.clipboard.writeText(getExportText()).then(() => alert("報告已複製 (Report Copied)"));
-  };
-
-  const copyForGoogleDocs = async () => {
-    if (!result) return;
-    const html = generateHTMLTable(result, settings);
-    try {
-      const blobHtml = new Blob([html], { type: 'text/html' });
-      const blobText = new Blob([getExportText()], { type: 'text/plain' });
-      const data = [new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })];
-      await navigator.clipboard.write(data);
-      alert("已複製表格！(Table copied!)");
-    } catch (err) {
-      console.error('Failed to copy formatted text: ', err);
-      copyExportText();
-    }
-  };
-
-  const downloadCSV = () => {
-    if (!result) return;
-    const csv = generateCSV(result);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `poker_settlement_${new Date().toISOString().slice(0,10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleOpenChat = () => {
-      setIsChatOpen(true);
-  };
-
-  const handleLogoClick = () => {
-    const newCount = logoClickCount + 1;
-    setLogoClickCount(newCount);
-    // Secret Admin Trigger: 5 clicks
-    if (newCount >= 5) {
-        setIsManagerOpen(true);
-        setLogoClickCount(0);
-    }
-  };
-
-  const isLocked = settings.isLocked || false;
+  const isLocked = settings.isLocked;
 
   return (
-    <div className="min-h-screen pb-20 font-sans selection:bg-poker-green selection:text-black">
+    <div className="max-w-md mx-auto min-h-screen flex flex-col pb-24 relative overflow-hidden">
       
-      {/* Invisible Sync Component to Auto-Add Joined Player to Cloud Directory */}
-      <RoomProvider 
-          id={GLOBAL_DB_ROOM_ID} 
-          initialPresence={{}} 
-          initialStorage={{ playerDirectory: new LiveList([]) }}
-      >
-          <ClientSideSuspense fallback={null}>
-            {() => <GlobalPlayerSyncer name={currentUser.name} />}
-          </ClientSideSuspense>
-      </RoomProvider>
+      {/* Top Bar */}
+      <div className="px-4 pt-6 pb-2 flex justify-between items-center z-10">
+        <div>
+           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+             Poker<span className="text-poker-green">Pro</span>
+           </h1>
+           <div className="flex items-center space-x-2 text-[10px] text-gray-400">
+              <span className="bg-white/5 px-2 py-0.5 rounded border border-white/5">Room: {new URLSearchParams(window.location.search).get("room")}</span>
+              <span className="flex items-center text-green-400">
+                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></span>
+                 {others.length + 1} Online
+              </span>
+           </div>
+        </div>
+        <button 
+          onClick={() => setIsSettingsOpen(true)}
+          className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
+        >
+          <SettingsIcon />
+        </button>
+      </div>
 
-      {/* Name Suggestions Datalist */}
-      <datalist id="in-game-known-players">
-        {knownPlayers.map((name, i) => (
-            <option key={i} value={name} />
-        ))}
-      </datalist>
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 custom-scrollbar z-10">
+        
+        {/* Status Message */}
+        {isLocked && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-2 flex items-center justify-center">
+                 <span className="text-red-400 text-xs font-bold uppercase tracking-wider">🚫 Room Locked by Host</span>
+            </div>
+        )}
 
-      {/* Header */}
-      <header className="sticky top-0 z-40 glass-panel border-x-0 border-t-0 bg-opacity-40 backdrop-blur-xl">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div className="flex items-center space-x-3 cursor-pointer select-none group" onClick={handleLogoClick}>
-                <div className={`bg-gradient-to-br from-poker-green to-emerald-700 p-2 rounded-xl shadow-lg shadow-poker-green/20 ${logoClickCount > 0 ? 'animate-pulse' : ''} transition-transform group-active:scale-95`}>
-                    <ChipsIcon />
+        {/* Players List */}
+        {players.map((player) => (
+          <div key={player.id} className="glass-panel rounded-2xl p-4 transition-all hover:border-white/20">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border border-white/10 shadow-inner mr-3">
+                  <span className="font-bold text-lg text-gray-300">{player.name.charAt(0)}</span>
                 </div>
                 <div>
-                    <h1 className="text-xl font-bold text-white tracking-tight">
-                        Poker<span className="text-poker-green">Pro</span>
-                    </h1>
-                    <div className="flex items-center space-x-2">
-                        <span className={`inline-block w-2 h-2 rounded-full ${currentUser.isHost ? 'bg-poker-gold' : 'bg-blue-400'}`}></span>
-                        <p className="text-xs text-gray-400 font-mono">
-                            {currentUser.isHost ? 'HOST' : 'PLAYER'}: <span className="text-white">{currentUser.name}</span>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div className="flex items-center space-x-2 md:space-x-4">
-                {/* Admin button removed. Access via 5 logo clicks only. */}
-
-                {/* Locked Badge */}
-                {isLocked && (
-                    <div className="hidden md:flex items-center px-3 py-1.5 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold animate-pulse">
-                        <span className="mr-1"><LockIcon /></span> FINISHED
-                    </div>
-                )}
-
-                {/* Online Users with Tooltip - VISIBLE ON MOBILE NOW */}
-                <div className="flex relative group items-center px-3 py-1.5 bg-black/20 rounded-lg border border-white/5 cursor-pointer">
-                    <UsersIcon />
-                    <span className="ml-2 text-xs font-bold text-gray-300">{playerCount} <span className="hidden sm:inline">Online</span></span>
-                    
-                    {/* Tooltip */}
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-[#1a1a20] border border-white/10 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 overflow-hidden cursor-default">
-                       <div className="p-2">
-                          <div className="px-3 py-2 text-xs font-bold text-gray-500 uppercase border-b border-white/5 mb-1">Users (Click to Chat)</div>
-                          {self && (
-                              <div onClick={handleOpenChat} className="px-3 py-2 text-sm text-poker-green flex items-center hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
-                                  <span className="w-1.5 h-1.5 bg-poker-green rounded-full mr-2"></span>
-                                  {self.presence.name || 'You'} (Me)
-                              </div>
-                          )}
-                          {others.map((user) => (
-                             <div onClick={handleOpenChat} key={user.connectionId} className="px-3 py-2 text-sm text-gray-300 flex items-center hover:bg-white/5 rounded-lg cursor-pointer transition-colors">
-                                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full mr-2"></span>
-                                  {user.presence.name || `User ${user.connectionId}`}
-                             </div>
-                          ))}
-                       </div>
-                    </div>
-                </div>
-
-                {/* Mobile Chat Toggle Button (also visible on desktop for convenience) */}
-                <button 
-                    onClick={() => setIsChatOpen(!isChatOpen)}
-                    className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${isChatOpen ? 'bg-poker-green text-black border-poker-green' : 'bg-black/20 text-gray-400 border-white/5 hover:text-white'}`}
-                >
-                    <ChatIcon />
-                </button>
-
-                <button 
-                    onClick={copyLink}
-                    className="flex items-center space-x-2 bg-poker-green/10 hover:bg-poker-green/20 text-poker-green border border-poker-green/20 px-3 py-2 rounded-lg text-sm transition-all hover:scale-105 active:scale-95"
-                >
-                    <ShareIcon /> <span className="hidden md:inline">Invite Friends</span>
-                </button>
-            </div>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 max-w-4xl mt-8 space-y-8">
-        
-        {/* Settings Card */}
-        <section className={`glass-panel rounded-3xl overflow-hidden relative group transition-opacity ${!currentUser.isHost || isLocked ? 'opacity-80' : ''}`}>
-           {currentUser.isHost && (
-             <div className="absolute top-0 right-0 w-32 h-32 bg-poker-green/10 rounded-full blur-3xl group-hover:bg-poker-green/20 transition-all duration-700"></div>
-           )}
-
-          <div className="px-8 py-5 border-b border-glass-border flex items-center justify-between">
-             <h2 className="text-lg font-bold text-white flex items-center">
-               <span className="mr-2">🎲</span> 遊戲設定 (Settings)
-             </h2>
-             <div className="flex items-center space-x-2">
-                 {isLocked && <span className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded font-bold">LOCKED</span>}
-                 {!currentUser.isHost && <span className="text-xs text-gray-500 border border-gray-700 px-2 py-1 rounded">Read Only</span>}
-             </div>
-          </div>
-          <div className="p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-               <div className="space-y-3">
-                 <label className="text-xs text-poker-green font-bold uppercase tracking-wider">Chips per Buy-in</label>
-                 <input 
-                   type="number" 
-                   value={settings.chipPerBuyIn}
-                   onChange={(e) => updateSettings({ chipPerBuyIn: Number(e.target.value) })}
-                   disabled={!currentUser.isHost || isLocked}
-                   className={`glass-input w-full rounded-xl py-4 px-5 text-white text-lg font-medium outline-none ${(!currentUser.isHost || isLocked) ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
-                 />
-               </div>
-               
-               <div className="hidden md:flex justify-center">
-                 <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400">⚡</div>
-               </div>
-
-               <div className="space-y-3">
-                 <label className="text-xs text-poker-green font-bold uppercase tracking-wider">Cash per Buy-in</label>
-                 <div className="relative">
-                   <span className="absolute left-5 top-4 text-gray-400 text-lg">$</span>
-                   <input 
-                    type="number" 
-                    value={settings.cashPerBuyIn}
-                    onChange={(e) => updateSettings({ cashPerBuyIn: Number(e.target.value) })}
-                    disabled={!currentUser.isHost || isLocked}
-                    className={`glass-input w-full rounded-xl py-4 pl-10 pr-5 text-white text-lg font-medium outline-none ${(!currentUser.isHost || isLocked) ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
-                   />
-                 </div>
-               </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Players Card */}
-        <section className={`glass-panel rounded-3xl ${isLocked ? 'border-red-500/20' : ''}`}>
-           <div className="px-8 py-5 border-b border-glass-border flex justify-between items-center flex-wrap gap-3">
-             <div className="flex items-center">
-                <h2 className="text-lg font-bold text-white flex items-center"><span className="mr-2">🃏</span> 玩家列表 (Players)</h2>
-                {isLocked && <span className="ml-3 text-xs bg-red-500 text-black font-bold px-2 py-0.5 rounded">FINISHED</span>}
-             </div>
-             
-             {/* Only Host sees Import/Add buttons */}
-             {currentUser.isHost && !isLocked && (
-                <div className="flex flex-wrap items-center gap-2 md:gap-3">
-                    <button 
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="px-3 py-2 text-xs md:text-sm text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all"
-                    >
-                        匯入
-                    </button>
-                    
-                    <div className="h-6 w-px bg-white/10 hidden md:block"></div>
-
-                    <button 
-                        onClick={() => setIsPlayerDirectoryOpen(true)}
-                        className="px-3 py-2 text-xs md:text-sm bg-blue-600/20 hover:bg-blue-600/30 text-blue-200 border border-blue-500/30 rounded-xl transition-all flex items-center"
-                    >
-                        👥 選擇玩家 (Select)
-                    </button>
-
-                    <button 
-                        onClick={() => addPlayer({ name: `Player ${players.length + 1}` })}
-                        className="px-3 py-2 text-xs md:text-sm bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white border border-white/10 rounded-xl transition-all shadow-lg flex items-center"
-                    >
-                        <PlusIcon /> <span className="ml-1">Add</span>
-                    </button>
-                </div>
-             )}
-          </div>
-          
-          <div className="p-4 md:p-8 space-y-4">
-            {players.length === 0 && (
-                <div className="text-center py-12 text-gray-500 border-2 border-dashed border-white/5 rounded-2xl flex flex-col items-center">
-                    <p className="mb-4 text-lg font-medium">尚無玩家 (No Players)</p>
-                </div>
-            )}
-
-            {players.map((player, index) => {
-              const isMe = player.id === currentUser.id;
-              const canEdit = (currentUser.isHost || isMe) && !isLocked;
-              const canEditName = currentUser.isHost && !isLocked;
-              
-              return (
-                <div key={player.id} className={`group relative rounded-2xl p-4 transition-all duration-300 border ${isMe ? 'bg-poker-green/5 border-poker-green/30' : 'bg-black/20 border-white/5'}`}>
-                    {isMe && <div className="absolute -left-2 top-1/2 transform -translate-y-1/2 w-1 h-12 bg-poker-green rounded-full shadow-[0_0_10px_#00dc82]"></div>}
-                    
-                    <div className="flex flex-col md:flex-row gap-4 items-center">
-                        <div className="hidden md:flex w-8 h-8 rounded-full bg-white/5 items-center justify-center text-xs font-bold text-gray-500">
-                            {index + 1}
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-12 gap-4 w-full items-center">
-                            {/* Name */}
-                            <div className="col-span-2 md:col-span-4">
-                                <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Name</label>
-                                <input 
-                                type="text" 
-                                list={canEditName ? "in-game-known-players" : undefined}
-                                value={player.name}
-                                onChange={(e) => updatePlayer({ id: player.id, field: 'name', value: e.target.value })}
-                                disabled={!canEditName}
-                                className={`w-full bg-transparent text-lg text-white font-medium border-b border-transparent placeholder-gray-600 outline-none transition-colors ${canEditName ? 'focus:border-poker-green' : 'cursor-not-allowed opacity-80'}`}
-                                placeholder="Player Name"
-                                autoComplete="off"
-                                />
-                            </div>
-
-                            {/* Buy-ins */}
-                            <div className="col-span-1 md:col-span-3">
-                                <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Buy-ins</label>
-                                <div className="flex items-center md:justify-center">
-                                    <span className="text-gray-500 text-xs mr-2 md:hidden">x</span>
-                                    <input 
-                                        type="number" 
-                                        value={player.buyInCount}
-                                        onChange={(e) => {
-                                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                            updatePlayer({ id: player.id, field: 'buyInCount', value: isNaN(val) ? 0 : val });
-                                        }}
-                                        disabled={!canEdit}
-                                        className={`glass-input w-20 text-center rounded-lg py-2 text-white outline-none ${!canEdit ? 'cursor-not-allowed opacity-50 bg-black/40' : ''}`}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Chips */}
-                            <div className="col-span-1 md:col-span-4">
-                                <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Final Chips</label>
-                                <input 
-                                    type="number" 
-                                    value={player.finalChips}
-                                    onChange={(e) => {
-                                        const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                        updatePlayer({ id: player.id, field: 'finalChips', value: isNaN(val) ? 0 : val });
-                                    }}
-                                    disabled={!canEdit}
-                                    className={`glass-input w-full text-right rounded-lg py-2 px-3 text-poker-gold font-bold outline-none ${!canEdit ? 'cursor-not-allowed opacity-50 bg-black/40' : ''}`}
-                                />
-                            </div>
-
-                            {/* Delete (Only Host) */}
-                            {currentUser.isHost && !isLocked && (
-                                <div className="col-span-2 md:col-span-1 flex justify-end">
-                                    <button 
-                                    onClick={() => removePlayer(player.id)}
-                                    className="text-gray-600 hover:text-red-400 p-2 transition-colors"
-                                    title="Kick Player"
-                                    >
-                                    <TrashIcon />
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="p-6 border-t border-glass-border">
-              <button 
-                onClick={handleCalculate}
-                className="w-full bg-gradient-to-r from-poker-green to-emerald-600 hover:from-emerald-400 hover:to-poker-green text-black font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(0,220,130,0.3)] transform hover:scale-[1.01] active:scale-[0.99] transition-all"
-              >
-                🎊 計算結算 (Calculate)
-              </button>
-          </div>
-        </section>
-
-        {/* Results Section */}
-        {result && (
-          <section id="resultsSection" className="glass-panel rounded-3xl overflow-hidden animate-fade-in-up">
-             <div className="px-8 py-5 border-b border-glass-border flex justify-between items-center bg-black/20">
-                 <h2 className="text-lg font-bold text-white">📊 結算結果 (Results)</h2>
-                 <div className={`px-3 py-1 rounded-full text-xs font-bold border ${result.isBalanced ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                    {result.isBalanced ? 'Balanced ✨' : `Diff: $${result.totalBalance}`}
-                 </div>
-             </div>
-
-             <div className="p-2 bg-black/10">
-                <div className="flex bg-black/20 rounded-xl p-1 relative">
-                    <button 
-                      onClick={() => setActiveTab('transfers')}
-                      className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all z-10 ${activeTab === 'transfers' ? 'bg-gray-700/80 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      💸 轉帳方案
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('profits')}
-                      className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all z-10 ${activeTab === 'profits' ? 'bg-gray-700/80 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      📈 損益報告
-                    </button>
-                    <button 
-                      onClick={() => setActiveTab('export')}
-                      className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all z-10 ${activeTab === 'export' ? 'bg-gray-700/80 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                    >
-                      📋 匯出
-                    </button>
-                </div>
-             </div>
-
-             <div className="p-8 min-h-[300px]">
-                {activeTab === 'transfers' && (
-                  <div className="space-y-4">
-                     {result.transfers.length === 0 ? (
-                       <div className="text-center text-gray-500 py-8">
-                         無需轉帳 (No transfers needed)
-                       </div>
-                     ) : (
-                       result.transfers.map((t, i) => (
-                         <div key={i} className="flex justify-between items-center bg-black/40 p-3 rounded-lg border border-white/5">
-                            <div className="flex items-center space-x-2">
-                                <span className="text-red-400 font-bold">{t.fromName}</span>
-                                <span className="text-gray-500">➜</span>
-                                <span className="text-green-400 font-bold">{t.toName}</span>
-                            </div>
-                            <div className="font-mono font-bold text-poker-gold">${t.amount}</div>
-                         </div>
-                       ))
-                     )}
-                  </div>
-                )}
-
-                {activeTab === 'profits' && (
-                  <div className="space-y-2">
-                    {result.players.sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0)).map(p => (
-                      <div key={p.id} className="flex justify-between items-center p-3 rounded-lg bg-black/20 border border-white/5">
-                        <span className="font-medium text-white">{p.name}</span>
-                        <span className={`font-mono font-bold ${(p.netAmount || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                          {(p.netAmount || 0) > 0 ? '+' : ''}{p.netAmount}
-                        </span>
+                   <div className="font-bold text-lg">{player.name}</div>
+                   {calculation && (
+                      <div className={`text-xs font-mono font-bold ${
+                        (player.netAmount || 0) >= 0 ? 'text-poker-green' : 'text-poker-red'
+                      }`}>
+                         {player.netAmount && player.netAmount > 0 ? '+' : ''}{player.netAmount || 0}
                       </div>
-                    ))}
-                  </div>
-                )}
+                   )}
+                </div>
+              </div>
+              {!isLocked && (
+                <button 
+                  onClick={() => {
+                    if (confirm(`Remove ${player.name}?`)) removePlayer(player.id);
+                  }}
+                  className="text-gray-600 hover:text-red-500 transition-colors p-1"
+                >
+                  <TrashIcon />
+                </button>
+              )}
+            </div>
 
-                {activeTab === 'export' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <button onClick={copyExportText} className="flex flex-col items-center justify-center p-6 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
-                       <SheetIcon />
-                       <span className="mt-2 font-bold text-sm">複製文字報告</span>
-                       <span className="text-xs text-gray-500 mt-1">Copy Text</span>
-                    </button>
-                    <button onClick={copyForGoogleDocs} className="flex flex-col items-center justify-center p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-300 rounded-xl transition-all">
-                       <DocsIcon />
-                       <span className="mt-2 font-bold text-sm">複製表格 (Docs)</span>
-                       <span className="text-xs text-blue-400/50 mt-1">Copy Table</span>
-                    </button>
-                    <button onClick={downloadCSV} className="flex flex-col items-center justify-center p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-300 rounded-xl transition-all">
-                       <div className="rotate-180"><ShareIcon /></div> 
-                       <span className="mt-2 font-bold text-sm">下載 CSV</span>
-                       <span className="text-xs text-green-400/50 mt-1">Download</span>
-                    </button>
+            <div className="grid grid-cols-2 gap-4">
+               {/* Buy-ins Control */}
+               <div className="bg-black/20 rounded-xl p-2 flex items-center justify-between border border-white/5">
+                  <button 
+                    disabled={isLocked}
+                    onClick={() => updatePlayer(player.id, 'buyInCount', Math.max(0, player.buyInCount - 1))}
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 disabled:opacity-30"
+                  >
+                    -
+                  </button>
+                  <div className="flex flex-col items-center">
+                     <span className="text-[10px] text-gray-500 uppercase font-bold">Buy-ins</span>
+                     <span className="font-mono text-lg font-bold text-white">{player.buyInCount}</span>
                   </div>
-                )}
-             </div>
-          </section>
+                  <button 
+                    disabled={isLocked}
+                    onClick={() => updatePlayer(player.id, 'buyInCount', player.buyInCount + 1)}
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-poker-green disabled:opacity-30"
+                  >
+                    +
+                  </button>
+               </div>
+
+               {/* Chips Input */}
+               <div className="bg-black/20 rounded-xl p-2 border border-white/5 relative">
+                  <div className="absolute top-1 left-0 w-full text-center text-[10px] text-gray-500 uppercase font-bold pointer-events-none">Chips</div>
+                  <input 
+                    type="number"
+                    inputMode="numeric"
+                    disabled={isLocked}
+                    value={player.finalChips === 0 ? '' : player.finalChips}
+                    onChange={(e) => updatePlayer(player.id, 'finalChips', Number(e.target.value))}
+                    placeholder="0"
+                    className="w-full h-full bg-transparent text-center font-mono text-xl font-bold text-poker-gold focus:outline-none pt-3"
+                  />
+               </div>
+            </div>
+          </div>
+        ))}
+        
+        {players.length === 0 && (
+           <div className="text-center py-10 text-gray-500 opacity-60">
+              <div className="mb-2 text-4xl">🎲</div>
+              <p>No players yet.</p>
+              <p className="text-xs mt-1">Click "+" to add players.</p>
+           </div>
         )}
       </div>
 
-      <ImportModal 
-        isOpen={isImportModalOpen} 
-        onClose={() => setIsImportModalOpen(false)} 
-        onImport={importPlayers} 
-      />
-      
-      <PlayerDirectoryModal 
-         isOpen={isPlayerDirectoryOpen}
-         onClose={() => setIsPlayerDirectoryOpen(false)}
-         onSelect={handleDirectorySelect}
-         existingNames={players.map(p => p.name)}
-      />
+      {/* Stats Footer (Fixed) */}
+      <div className="fixed bottom-20 left-4 right-4 z-20">
+          {calculation && Math.abs(calculation.totalBalance) > 5 && (
+             <div className="glass-panel bg-red-500/10 border-red-500/30 text-red-200 px-4 py-2 rounded-xl text-center text-xs font-bold mb-2 animate-bounce shadow-lg">
+                ⚠️ Balance not zero: {calculation.totalBalance > 0 ? '+' : ''}{calculation.totalBalance}
+             </div>
+          )}
+          
+          <div className="glass-panel p-1 rounded-2xl flex justify-around items-center shadow-2xl bg-[#141419]/90 backdrop-blur-xl border border-white/10">
+             {/* Import Button */}
+             <button onClick={() => !isLocked && setIsImportOpen(true)} className={`p-4 rounded-xl flex flex-col items-center justify-center space-y-1 transition-all ${isLocked ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                <DocsIcon />
+             </button>
 
+             {/* Directory Button */}
+             <button onClick={() => !isLocked && setIsDirectoryOpen(true)} className={`p-4 rounded-xl flex flex-col items-center justify-center space-y-1 transition-all ${isLocked ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+                <DirectoryIcon />
+             </button>
+
+             {/* Add Button (Main) - Opens AddPlayerModal */}
+             <button 
+                onClick={() => !isLocked && setIsAddPlayerOpen(true)}
+                disabled={isLocked}
+                className={`w-14 h-14 -mt-8 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(0,220,130,0.3)] transition-transform hover:scale-110 active:scale-95 ${
+                    isLocked ? 'bg-gray-600 cursor-not-allowed' : 'bg-gradient-to-tr from-poker-green to-emerald-400 text-black'
+                }`}
+             >
+                <PlusIcon />
+             </button>
+
+             {/* Chat Button */}
+             <button onClick={() => setIsChatOpen(!isChatOpen)} className="p-4 rounded-xl flex flex-col items-center justify-center space-y-1 text-gray-400 hover:text-white hover:bg-white/5 transition-all relative">
+                <ChatIcon />
+                {messages && messages.length > 0 && (
+                  <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full"></span>
+                )}
+             </button>
+             
+             {/* Share Button */}
+             <button onClick={handleShare} className="p-4 rounded-xl flex flex-col items-center justify-center space-y-1 text-gray-400 hover:text-white hover:bg-white/5 transition-all">
+                <ShareIcon />
+             </button>
+          </div>
+      </div>
+
+      {/* Modals */}
       <RoomManager 
-        isOpen={isManagerOpen}
-        onClose={() => setIsManagerOpen(false)}
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        updateSettings={updateSettings}
+        updateSettings={(s) => updateSettings(s)}
         isHost={currentUser.isHost}
       />
-      
-      <ChatRoom 
-        currentUser={currentUser}
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
+
+      <ImportModal 
+        isOpen={isImportOpen} 
+        onClose={() => setIsImportOpen(false)} 
+        onImport={(p) => importPlayers(p)}
       />
+
+      <PlayerDirectoryModal
+         isOpen={isDirectoryOpen}
+         onClose={() => setIsDirectoryOpen(false)}
+         onSelect={(names) => {
+             names.forEach(name => addPlayer(name));
+         }}
+         existingNames={existingPlayerNames}
+      />
+
+      <AddPlayerModal
+        isOpen={isAddPlayerOpen}
+        onClose={() => setIsAddPlayerOpen(false)}
+        onAdd={(name) => addPlayer(name)}
+        existingNames={existingPlayerNames}
+      />
+
+      <ChatRoom 
+         currentUser={currentUser}
+         isOpen={isChatOpen}
+         onClose={() => setIsChatOpen(false)}
+      />
+
     </div>
   );
 };
-
-export default App;
