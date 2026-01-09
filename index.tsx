@@ -5,6 +5,7 @@ import { RoomProvider, hasApiKey } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 import { RoomManager } from './components/RoomManager';
+import { getKnownPlayers } from './utils/storage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -65,6 +66,22 @@ const getTodayString = () => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}${month}${day}`;
+};
+
+// Shared Datalist Component
+const PlayerNameDataList = () => {
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    setNames(getKnownPlayers());
+  }, []);
+
+  return (
+    <datalist id="known-players">
+      {names.map((name, i) => (
+        <option key={i} value={name} />
+      ))}
+    </datalist>
+  );
 };
 
 // Component: Create Room (Host)
@@ -160,6 +177,13 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
+      <PlayerNameDataList />
+      
+      {/* Admin Button (Top Right) */}
+      <div className="absolute top-4 right-4 z-50">
+          {/* Hidden click area is on Logo, but keeping structure clean */}
+      </div>
+
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         {/* Decorative Background */}
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-poker-green/10 to-transparent animate-spin-slow pointer-events-none"></div>
@@ -175,10 +199,12 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
               <label className="block text-xs font-bold text-poker-green uppercase mb-2">房主暱稱 (Host Name)</label>
               <input 
                 type="text" 
+                list="known-players"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Ex: David"
                 className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-poker-green transition-colors"
+                autoComplete="off"
               />
             </div>
 
@@ -261,6 +287,8 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
+      <PlayerNameDataList />
+
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-blue-500/10 to-transparent animate-spin-slow pointer-events-none"></div>
         
@@ -275,11 +303,13 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
               <label className="block text-xs font-bold text-blue-400 uppercase mb-2">您的暱稱 (Your Name)</label>
               <input 
                 type="text" 
+                list="known-players"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="Ex: Sarah"
                 className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-blue-400 transition-colors"
                 autoFocus
+                autoComplete="off"
               />
             </div>
 

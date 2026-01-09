@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { GameSettings } from '../types';
+import { getGameLogs, GameLog, clearGameLogs } from '../utils/storage';
 
 interface RoomManagerProps {
   isOpen: boolean;
@@ -31,6 +32,13 @@ interface SystemStats {
   totalPlayersEstimate: number; // Rough estimate based on logic
 }
 
+interface PlayerStat {
+  name: string;
+  gamesPlayed: number;
+  totalNet: number;
+  lastPlayed: number;
+}
+
 export const RoomManager: React.FC<RoomManagerProps> = ({ 
   isOpen, 
   onClose, 
@@ -38,8 +46,9 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   updateSettings, 
   isHost = false
 }) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'local'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'local' | 'player_stats'>('dashboard');
   const [history, setHistory] = useState<RoomHistory[]>([]);
+  const [gameLogs, setGameLogs] = useState<GameLog[]>([]);
   const [globalRooms, setGlobalRooms] = useState<GlobalRoom[]>([]);
   const [isLoadingGlobal, setIsLoadingGlobal] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -51,6 +60,7 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
     if (isOpen) {
       loadHistory();
       fetchGlobalRooms();
+      setGameLogs(getGameLogs());
     }
   }, [isOpen]);
 
@@ -81,6 +91,29 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
         totalPlayersEstimate: globalRooms.length * 4 // Heuristic avg
     };
   }, [globalRooms]);
+
+  // Calculate Player Stats
+  const playerStats: PlayerStat[] = useMemo(() => {
+    const map = new Map<string, PlayerStat>();
+    
+    gameLogs.forEach(log => {
+      log.players.forEach(p => {
+        const name = p.name;
+        if (!map.has(name)) {
+          map.set(name, { name, gamesPlayed: 0, totalNet: 0, lastPlayed: 0 });
+        }
+        const stat = map.get(name)!;
+        stat.gamesPlayed += 1;
+        stat.totalNet += p.net;
+        if (log.timestamp > stat.lastPlayed) {
+          stat.lastPlayed = log.timestamp;
+        }
+      });
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.totalNet - a.totalNet);
+  }, [gameLogs]);
+
 
   const loadHistory = () => {
     try {
@@ -138,6 +171,13 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
       loadHistory();
     }
   };
+  
+  const handleClearStats = () => {
+      if (window.confirm("確定要清除所有戰績紀錄嗎？這將重置所有玩家的損益表。")) {
+          clearGameLogs();
+          setGameLogs([]);
+      }
+  };
 
   if (!isOpen) return null;
 
@@ -160,22 +200,28 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-white/5 bg-black/20">
+        <div className="flex border-b border-white/5 bg-black/20 overflow-x-auto">
             <button 
                 onClick={() => setActiveTab('dashboard')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`flex-1 py-3 px-4 whitespace-nowrap text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
             >
                 📊 Dashboard
             </button>
             <button 
+                onClick={() => setActiveTab('player_stats')}
+                className={`flex-1 py-3 px-4 whitespace-nowrap text-sm font-medium transition-colors ${activeTab === 'player_stats' ? 'text-poker-gold border-b-2 border-poker-gold bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+                🏆 Player Stats
+            </button>
+            <button 
                 onClick={() => setActiveTab('rooms')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'rooms' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`flex-1 py-3 px-4 whitespace-nowrap text-sm font-medium transition-colors ${activeTab === 'rooms' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
             >
                 🌍 Global Rooms
             </button>
             <button 
                 onClick={() => setActiveTab('local')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'local' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`flex-1 py-3 px-4 whitespace-nowrap text-sm font-medium transition-colors ${activeTab === 'local' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
             >
                 🕒 Local History
             </button>
@@ -231,6 +277,48 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                             </button>
                         </div>
                     </div>
+                  )}
+              </div>
+          )}
+
+          {/* TAB: PLAYER STATS */}
+          {activeTab === 'player_stats' && (
+              <div>
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-xs font-bold text-poker-gold uppercase tracking-wider">Lifetime Leaderboard (Local Data)</h3>
+                      <button onClick={handleClearStats} className="text-xs text-red-400 hover:text-red-300 border border-red-500/20 px-2 py-1 rounded">Reset Stats</button>
+                  </div>
+
+                  {playerStats.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500 border border-dashed border-white/10 rounded-xl">
+                          <p>尚無戰績資料。</p>
+                          <p className="text-xs mt-2 text-gray-600">每次結算時會自動記錄於此裝置。</p>
+                      </div>
+                  ) : (
+                      <div className="bg-black/20 rounded-xl border border-white/5 overflow-hidden">
+                          <table className="w-full text-left text-xs">
+                              <thead className="bg-white/5 text-gray-400 font-medium">
+                                  <tr>
+                                      <th className="p-3">Rank</th>
+                                      <th className="p-3">Player</th>
+                                      <th className="p-3 text-right">Games</th>
+                                      <th className="p-3 text-right">Total Net</th>
+                                  </tr>
+                              </thead>
+                              <tbody className="divide-y divide-white/5">
+                                  {playerStats.map((stat, i) => (
+                                      <tr key={stat.name} className="hover:bg-white/5 transition-colors">
+                                          <td className="p-3 font-mono text-gray-500 w-12">#{i + 1}</td>
+                                          <td className="p-3 font-bold text-white">{stat.name}</td>
+                                          <td className="p-3 text-right text-gray-400">{stat.gamesPlayed}</td>
+                                          <td className={`p-3 text-right font-mono font-bold text-sm ${stat.totalNet >= 0 ? 'text-poker-green' : 'text-red-400'}`}>
+                                              {stat.totalNet >= 0 ? '+' : ''}{stat.totalNet}
+                                          </td>
+                                      </tr>
+                                  ))}
+                              </tbody>
+                          </table>
+                      </div>
                   )}
               </div>
           )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Player, CalculationResult } from './types';
 import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
+import { getKnownPlayers, saveGameLog } from './utils/storage';
 import { ImportModal } from './components/ImportModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
@@ -61,7 +62,13 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
+  const [knownPlayers, setKnownPlayers] = useState<string[]>([]);
   const hasAutoJoined = useRef(false);
+
+  // Load known players for datalist suggestions
+  useEffect(() => {
+    setKnownPlayers(getKnownPlayers());
+  }, []);
 
   // Mutations
   const updateSettings = useMutation(({ storage }, newSettings: Partial<typeof settings>) => {
@@ -158,6 +165,12 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const handleCalculate = () => {
     const res = calculateSettlement(players, settings);
     setResult(res);
+    
+    // Auto-save history to local device for the Admin Dashboard
+    const roomId = new URLSearchParams(window.location.search).get("room") || "unknown";
+    saveGameLog(roomId, res);
+    setKnownPlayers(getKnownPlayers()); // Refresh list
+
     setTimeout(() => {
         document.getElementById('resultsSection')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
@@ -245,6 +258,13 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   return (
     <div className="min-h-screen pb-20 font-sans selection:bg-poker-green selection:text-black">
       
+      {/* Name Suggestions Datalist */}
+      <datalist id="in-game-known-players">
+        {knownPlayers.map((name, i) => (
+            <option key={i} value={name} />
+        ))}
+      </datalist>
+
       {/* Header */}
       <header className="sticky top-0 z-40 glass-panel border-x-0 border-t-0 bg-opacity-40 backdrop-blur-xl">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
@@ -423,11 +443,13 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                                 <label className="md:hidden text-[10px] text-gray-500 uppercase font-bold mb-1 block">Name</label>
                                 <input 
                                 type="text" 
+                                list={canEditName ? "in-game-known-players" : undefined}
                                 value={player.name}
                                 onChange={(e) => updatePlayer({ id: player.id, field: 'name', value: e.target.value })}
                                 disabled={!canEditName}
                                 className={`w-full bg-transparent text-lg text-white font-medium border-b border-transparent placeholder-gray-600 outline-none transition-colors ${canEditName ? 'focus:border-poker-green' : 'cursor-not-allowed opacity-80'}`}
                                 placeholder="Player Name"
+                                autoComplete="off"
                                 />
                             </div>
 
