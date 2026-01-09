@@ -203,7 +203,7 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = (props) => {
                      <p className="text-sm font-mono animate-pulse">Loading Database...</p>
                 </div>
             }>
-                {() => <AddPlayerInner {...props} />}
+                <AddPlayerInner {...props} />
             </ClientSideSuspense>
         </RoomProvider>
       </div>

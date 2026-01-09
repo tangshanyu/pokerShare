@@ -235,7 +235,7 @@ export const PlayerDirectoryModal: React.FC<PlayerDirectoryModalProps> = (props)
                      <p className="text-sm font-mono animate-pulse">Syncing Player Database...</p>
                 </div>
             }>
-                {() => <DirectoryInner {...props} />}
+                <DirectoryInner {...props} />
             </ClientSideSuspense>
         </RoomProvider>
       </div>

@@ -402,7 +402,7 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                         Connecting to Database...
                     </div>
                  }>
-                    {() => <GlobalStatsView onClose={onClose} />}
+                    <GlobalStatsView onClose={onClose} />
                  </ClientSideSuspense>
               </RoomProvider>
           )}

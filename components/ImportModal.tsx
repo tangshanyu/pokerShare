@@ -142,7 +142,7 @@ export const ImportModal: React.FC<ImportModalProps> = (props) => {
                     <div className="text-white font-bold text-sm">Loading Database...</div>
                 </div>
             }>
-                {() => <ImportModalInner {...props} />}
+                <ImportModalInner {...props} />
             </ClientSideSuspense>
         </RoomProvider>
     </div>

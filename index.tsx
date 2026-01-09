@@ -468,7 +468,7 @@ const CreateRoomScreen = (props: any) => (
               <div className="text-sm font-mono text-poker-green">Connecting to Global Database...</div>
            </div>
         }>
-           {() => <CreateRoomForm {...props} />}
+           <CreateRoomForm {...props} />
         </ClientSideSuspense>
       </RoomProvider>
   </div>
@@ -488,7 +488,7 @@ const ReportsPage = ({ onBack }: { onBack: () => void }) => (
              </div>
           </div>
        }>
-          {() => <ReportsScreen onBack={onBack} />}
+          <ReportsScreen onBack={onBack} />
        </ClientSideSuspense>
      </RoomProvider>
 );
@@ -506,7 +506,7 @@ const JoinRoomScreen = (props: any) => (
               <div className="text-sm font-mono text-blue-400">Loading Room...</div>
            </div>
         }>
-           {() => <JoinRoomForm {...props} />}
+           <JoinRoomForm {...props} />
         </ClientSideSuspense>
       </RoomProvider>
   </div>
@@ -605,7 +605,7 @@ const Root = () => {
       }}
     >
       <ClientSideSuspense fallback={<Loading />}>
-        {() => <App currentUser={userState} />}
+        <App currentUser={userState} />
       </ClientSideSuspense>
     </RoomProvider>
   );
