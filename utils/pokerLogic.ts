@@ -1,6 +1,6 @@
 import { Player, GameSettings, Transfer, CalculationResult } from '../types';
 
-export const calculateSettlement = (players: Player[], settings: GameSettings): CalculationResult => {
+export const calculateSettlement = (players: readonly Player[], settings: Readonly<GameSettings>): CalculationResult => {
   const { chipPerBuyIn, cashPerBuyIn } = settings;
   const exchangeRate = cashPerBuyIn / chipPerBuyIn; // Cash per 1 chip
 
@@ -79,7 +79,7 @@ export const calculateSettlement = (players: Player[], settings: GameSettings): 
 };
 
 // URL State Management
-export const serializeState = (players: Player[], settings: GameSettings): string => {
+export const serializeState = (players: readonly Player[], settings: Readonly<GameSettings>): string => {
   const data = { p: players, s: settings };
   // encodeURIComponent ensures the string is safe for btoa (handles Unicode/Chinese)
   return btoa(encodeURIComponent(JSON.stringify(data)));
@@ -128,7 +128,7 @@ export const generateCSV = (result: CalculationResult): string => {
   return csv;
 };
 
-export const generateHTMLTable = (result: CalculationResult, settings: GameSettings): string => {
+export const generateHTMLTable = (result: CalculationResult, settings: Readonly<GameSettings>): string => {
   // Inline styles are required for copy-paste to Google Docs
   const tableStyle = "border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; border: 1px solid #ccc;";
   const thStyle = "background-color: #f3f3f3; border: 1px solid #ccc; padding: 8px; text-align: left;";

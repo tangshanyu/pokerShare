@@ -53,6 +53,7 @@ interface AppProps {
 
 // --- Hidden Component to Sync Current User to Global Directory ---
 const GlobalPlayerSyncer = ({ name }: { name: string }) => {
+    // useStorage returns a plain array (snapshot), not a LiveList instance
     const cloudDirectory = useStorage((root) => root.playerDirectory);
     
     const addToCloud = useMutation(({ storage }, newName: string) => {
@@ -62,14 +63,18 @@ const GlobalPlayerSyncer = ({ name }: { name: string }) => {
             storage.set("playerDirectory", list);
         }
         
+        // In mutation, 'list' is a LiveList, so we CAN use toArray() or direct methods if needed
+        // But logic here is fine
         if (!list.toArray().includes(newName)) {
             list.push(newName);
         }
     }, []);
 
     useEffect(() => {
-        if (cloudDirectory && name && name.trim()) {
-            if (!cloudDirectory.toArray().includes(name.trim())) {
+        // useStorage returns undefined while loading, or a plain array when loaded.
+        // It does NOT have .toArray() method.
+        if (cloudDirectory && Array.isArray(cloudDirectory) && name && name.trim()) {
+            if (!cloudDirectory.includes(name.trim())) {
                 addToCloud(name.trim());
             }
         }

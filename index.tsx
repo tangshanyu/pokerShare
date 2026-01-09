@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import { RoomProvider, hasApiKey } from './liveblocks.config';
+import { RoomProvider, hasApiKey, useStorage, useMutation } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 import { RoomManager } from './components/RoomManager';
@@ -13,6 +13,9 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
+// Constant ID for the shared database room
+const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
 
 // --- State Management for Lobby/User ---
 
@@ -68,67 +71,155 @@ const getTodayString = () => {
   return `${year}${month}${day}`;
 };
 
-// Shared Datalist Component
-const PlayerNameDataList = () => {
-  const [names, setNames] = useState<string[]>([]);
-  useEffect(() => {
-    setNames(getKnownPlayers());
+// --- User Selector Component (Connected to Global DB) ---
+
+interface UserSelectorProps {
+  name: string;
+  setName: (n: string) => void;
+  onSaveName: () => void; // Parent triggers this to save to DB
+}
+
+const UserSelector = ({ name, setName, registerSaveRef }: { name: string, setName: (n: string) => void, registerSaveRef: (fn: () => void) => void }) => {
+  // useStorage returns a plain array (snapshot)
+  const cloudDirectory = useStorage((root) => root.playerDirectory);
+  const [isManualInput, setIsManualInput] = useState(false);
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Mutation to add name to cloud
+  const addToCloud = useMutation(({ storage }, newName: string) => {
+    let list = storage.get("playerDirectory");
+    if (!list) {
+      list = new LiveList<string>([]);
+      storage.set("playerDirectory", list);
+    }
+    if (!list.toArray().includes(newName)) {
+      list.push(newName);
+    }
   }, []);
 
+  // Register the save function to parent
+  useEffect(() => {
+    registerSaveRef(() => {
+      if (name && name.trim()) {
+        addToCloud(name.trim());
+      }
+    });
+  }, [name, addToCloud, registerSaveRef]);
+
+  // Initial Logic: If current local name exists in cloud, set mode to Select, else Manual
+  useEffect(() => {
+    if (!hasInitialized && cloudDirectory !== undefined) {
+      const list = Array.isArray(cloudDirectory) ? cloudDirectory : [];
+      // If we have a name in local storage (passed via props) and it's NOT in the list, default to manual.
+      // If list is empty, default to manual.
+      if (list.length === 0) {
+        setIsManualInput(true);
+      } else if (name && !list.includes(name)) {
+        setIsManualInput(true);
+      } else {
+        setIsManualInput(false);
+      }
+      setHasInitialized(true);
+    }
+  }, [cloudDirectory, name, hasInitialized]);
+
+  const directoryList = Array.isArray(cloudDirectory) ? [...cloudDirectory].sort() : [];
+
+  if (!hasInitialized) {
+     return <div className="h-12 w-full bg-white/5 rounded-xl animate-pulse"></div>;
+  }
+
   return (
-    <datalist id="known-players">
-      {names.map((name, i) => (
-        <option key={i} value={name} />
-      ))}
-    </datalist>
+    <div className="space-y-3">
+      <div className="flex justify-between items-center mb-1">
+        <label className={`block text-xs font-bold uppercase transition-colors ${isManualInput ? 'text-blue-400' : 'text-poker-green'}`}>
+          {isManualInput ? '輸入新名稱 (New User)' : '選擇玩家 (Select Player)'}
+        </label>
+        
+        <button 
+          onClick={() => {
+             setIsManualInput(!isManualInput);
+             setName(''); // Clear name on switch for better UX
+          }}
+          className="text-[10px] text-gray-400 hover:text-white underline decoration-dotted underline-offset-2 transition-colors"
+        >
+          {isManualInput ? '使用現有玩家 (Select Existing)' : '我是新玩家 (New User)'}
+        </button>
+      </div>
+
+      {isManualInput ? (
+        <div className="relative animate-fade-in">
+           <input 
+              type="text" 
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="輸入您的名字..."
+              className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-blue-400 transition-colors"
+              autoFocus
+              autoComplete="off"
+            />
+            <div className="absolute right-3 top-3 text-xs text-blue-400 font-bold px-2 py-0.5 bg-blue-500/10 rounded">NEW</div>
+        </div>
+      ) : (
+        <div className="relative animate-fade-in">
+           <select
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-poker-green transition-colors appearance-none cursor-pointer"
+           >
+              <option value="" disabled>-- 請選擇 --</option>
+              {directoryList.map((p) => (
+                <option key={p} value={p} className="bg-[#1a1a20] text-gray-200">
+                  {p}
+                </option>
+              ))}
+           </select>
+           {/* Custom Arrow */}
+           <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+           </div>
+        </div>
+      )}
+    </div>
   );
 };
 
-// Component: Create Room (Host)
-const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, roomId: string) => void, openManager: () => void }) => {
+// Component: Create Room Form (Inner)
+const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, roomId: string) => void, openManager: () => void }) => {
   const [name, setName] = useState(localStorage.getItem('poker_user_name') || '');
   const [chipRatio, setChipRatio] = useState(1000);
   const [cashRatio, setCashRatio] = useState(500);
   const [clickCount, setClickCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Ref to hold the save function from the child component
+  const saveNameRef = React.useRef<() => void>(() => {});
 
   const generateSequentialRoomId = async () => {
-    const datePrefix = getTodayString(); // e.g., 20240112
-    
+    const datePrefix = getTodayString();
     try {
-      // Fetch existing rooms to calculate sequence
       const res = await fetch('/api/rooms');
       if (res.ok) {
         const data = await res.json();
         const rooms = data.rooms || [];
-
-        // Find rooms created today that match the pattern YYYYMMDDxxx
         const todaysRooms = rooms.filter((r: any) => {
-             // Check if starts with date and the suffix is a number
              return r.id.startsWith(datePrefix) && !isNaN(Number(r.id.substring(8)));
         });
 
         let maxSeq = 0;
         todaysRooms.forEach((r: any) => {
-            // Extract the suffix (e.g., from 20240112005 extract 005)
             const suffix = r.id.substring(8);
-            // We assume suffixes are numeric.
             const seq = parseInt(suffix, 10);
             if (!isNaN(seq) && seq > maxSeq) {
                 maxSeq = seq;
             }
         });
-
-        // Generate next sequence (e.g., 001)
-        // Using 3 digits for cleaner look (001), change padStart to 5 if you want 00001
         const nextSeq = String(maxSeq + 1).padStart(3, '0');
         return `${datePrefix}${nextSeq}`;
       }
     } catch (e) {
-      console.warn("API fetch failed, falling back to time-based ID", e);
+      console.warn("API fetch failed", e);
     }
-
-    // Fallback: Use Time (HHMMSS) if API fails to ensure uniqueness
     const now = new Date();
     const timeSuffix = String(now.getHours()).padStart(2, '0') + 
                        String(now.getMinutes()).padStart(2, '0') + 
@@ -137,19 +228,21 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
   };
 
   const handleCreate = async () => {
-    if (!name.trim()) return alert("請輸入您的暱稱 (Please enter your name)");
+    if (!name.trim()) return alert("請輸入或選擇您的暱稱 (Please select or enter your name)");
     
     setIsGenerating(true);
 
     try {
-      // Save name preference
+      // 1. Save Name to Global DB (if new)
+      saveNameRef.current();
+
+      // 2. Local Storage Preference
       localStorage.setItem('poker_user_name', name);
 
-      // Generate ID
+      // 3. Generate ID
       const newRoomId = await generateSequentialRoomId();
       const userId = getUserId();
       
-      // Mark as host in local storage for this room
       localStorage.setItem(`poker_is_host_${newRoomId}`, 'true');
       saveRoomToHistory(newRoomId, name);
 
@@ -168,7 +261,6 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
   const handleLogoClick = () => {
     const next = clickCount + 1;
     setClickCount(next);
-    // Admin Trigger: 5 clicks
     if (next >= 5) {
       openManager();
       setClickCount(0);
@@ -176,14 +268,6 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
-      <PlayerNameDataList />
-      
-      {/* Admin Button (Top Right) */}
-      <div className="absolute top-4 right-4 z-50">
-          {/* Hidden click area is on Logo, but keeping structure clean */}
-      </div>
-
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         {/* Decorative Background */}
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-poker-green/10 to-transparent animate-spin-slow pointer-events-none"></div>
@@ -195,18 +279,12 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
           </div>
 
           <div className="space-y-6">
-            <div>
-              <label className="block text-xs font-bold text-poker-green uppercase mb-2">房主暱稱 (Host Name)</label>
-              <input 
-                type="text" 
-                list="known-players"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Ex: David"
-                className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-poker-green transition-colors"
-                autoComplete="off"
-              />
-            </div>
+            {/* User Selector with DB Sync */}
+            <UserSelector 
+              name={name} 
+              setName={setName} 
+              registerSaveRef={(fn) => saveNameRef.current = fn}
+            />
 
             <div className="grid grid-cols-2 gap-4">
                <div>
@@ -231,8 +309,8 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
 
             <button 
               onClick={handleCreate}
-              disabled={isGenerating}
-              className={`w-full bg-gradient-to-r from-poker-green to-emerald-600 hover:from-emerald-400 hover:to-poker-green text-black font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(0,220,130,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center ${isGenerating ? 'opacity-80 cursor-wait' : ''}`}
+              disabled={isGenerating || !name.trim()}
+              className={`w-full bg-gradient-to-r from-poker-green to-emerald-600 hover:from-emerald-400 hover:to-poker-green text-black font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(0,220,130,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center ${isGenerating || !name.trim() ? 'opacity-80 cursor-wait' : ''}`}
             >
               {isGenerating ? (
                 <>
@@ -249,21 +327,27 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
           </div>
         </div>
       </div>
-    </div>
   );
 };
 
-// Component: Join Room (Player)
-const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) => void, openManager: () => void }) => {
+// Component: Join Room Form (Inner)
+const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => void, openManager: () => void }) => {
   const [name, setName] = useState(localStorage.getItem('poker_user_name') || '');
   const roomId = new URLSearchParams(window.location.search).get("room");
   const isPreviouslyHost = localStorage.getItem(`poker_is_host_${roomId}`) === 'true';
   const [clickCount, setClickCount] = useState(0);
 
+  // Ref to hold the save function from the child component
+  const saveNameRef = React.useRef<() => void>(() => {});
+
   const handleJoin = () => {
-    if (!name.trim()) return alert("請輸入您的暱稱 (Please enter your name)");
-    localStorage.setItem('poker_user_name', name);
+    if (!name.trim()) return alert("請輸入或選擇您的暱稱 (Please select or enter your name)");
     
+    // 1. Save Name to Global DB (if new)
+    saveNameRef.current();
+
+    // 2. Local Logic
+    localStorage.setItem('poker_user_name', name);
     if (roomId) saveRoomToHistory(roomId, 'Visited');
 
     const userId = getUserId();
@@ -278,7 +362,6 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
   const handleLogoClick = () => {
     const next = clickCount + 1;
     setClickCount(next);
-    // Admin Trigger: 5 clicks
     if (next >= 5) {
       openManager();
       setClickCount(0);
@@ -286,9 +369,6 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
-      <PlayerNameDataList />
-
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-blue-500/10 to-transparent animate-spin-slow pointer-events-none"></div>
         
@@ -299,32 +379,65 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
           </div>
 
           <div className="space-y-6">
-            <div>
-              <label className="block text-xs font-bold text-blue-400 uppercase mb-2">您的暱稱 (Your Name)</label>
-              <input 
-                type="text" 
-                list="known-players"
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Ex: Sarah"
-                className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-blue-400 transition-colors"
-                autoFocus
-                autoComplete="off"
-              />
-            </div>
+            
+            <UserSelector 
+              name={name} 
+              setName={setName} 
+              registerSaveRef={(fn) => saveNameRef.current = fn}
+            />
 
             <button 
               onClick={handleJoin}
-              className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all"
+              disabled={!name.trim()}
+              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all ${!name.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               👋 加入遊戲 (Join)
             </button>
           </div>
         </div>
       </div>
-    </div>
   );
 };
+
+// --- Wrapper Components to Provide Global DB Context ---
+
+const CreateRoomScreen = (props: any) => (
+  <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
+     <RoomProvider 
+        id={GLOBAL_DB_ROOM_ID} 
+        initialPresence={{}} 
+        initialStorage={{ playerDirectory: new LiveList([]) }}
+      >
+        <ClientSideSuspense fallback={
+           <div className="animate-pulse flex flex-col items-center">
+              <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
+              <div className="text-sm font-mono text-poker-green">Connecting to Global Database...</div>
+           </div>
+        }>
+           {() => <CreateRoomForm {...props} />}
+        </ClientSideSuspense>
+      </RoomProvider>
+  </div>
+);
+
+const JoinRoomScreen = (props: any) => (
+  <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
+     <RoomProvider 
+        id={GLOBAL_DB_ROOM_ID} 
+        initialPresence={{}} 
+        initialStorage={{ playerDirectory: new LiveList([]) }}
+      >
+        <ClientSideSuspense fallback={
+           <div className="animate-pulse flex flex-col items-center">
+              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+              <div className="text-sm font-mono text-blue-400">Loading Room...</div>
+           </div>
+        }>
+           {() => <JoinRoomForm {...props} />}
+        </ClientSideSuspense>
+      </RoomProvider>
+  </div>
+);
 
 // Error Screen
 const MissingKeyScreen = () => (
@@ -338,7 +451,7 @@ const MissingKeyScreen = () => (
   </div>
 );
 
-// Loading Screen
+// Loading Screen (Main App)
 const Loading = () => (
   <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
     <div className="animate-pulse flex flex-col items-center">
@@ -365,7 +478,7 @@ const Root = () => {
     return (
       <>
         <CreateRoomScreen 
-          onJoin={(user, newRoomId) => {
+          onJoin={(user: UserState, newRoomId: string) => {
             setRoomId(newRoomId);
             setUserState(user);
             // Update URL without reload
@@ -387,7 +500,7 @@ const Root = () => {
     return (
       <>
         <JoinRoomScreen 
-          onJoin={(user) => setUserState(user)} 
+          onJoin={(user: UserState) => setUserState(user)} 
           openManager={() => setIsLobbyManagerOpen(true)}
         />
         <RoomManager 

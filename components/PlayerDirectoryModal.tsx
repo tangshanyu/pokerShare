@@ -16,11 +16,13 @@ interface PlayerDirectoryModalProps {
 
 // --- Inner Component (Connected to Liveblocks) ---
 const DirectoryInner = ({ onClose, onSelect, existingNames }: Omit<PlayerDirectoryModalProps, 'isOpen'>) => {
+  // useStorage returns a plain ReadonlyArray, NOT a LiveList instance
   const cloudDirectory = useStorage((root) => root.playerDirectory);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Mutation: Add new player to Cloud
+  // Mutation: Add new player to Cloud (Here we interact with the actual LiveList)
   const addToCloud = useMutation(({ storage }, name: string) => {
     let list = storage.get("playerDirectory");
     if (!list) {
@@ -46,17 +48,17 @@ const DirectoryInner = ({ onClose, onSelect, existingNames }: Omit<PlayerDirecto
   }, []);
 
   // Sync Cloud to LocalStorage (Side Effect)
-  // This ensures the "datalist" used in the Lobby/Inputs gets updated too
   useEffect(() => {
-    if (cloudDirectory) {
-      const names = cloudDirectory.toArray();
-      addKnownPlayers(names);
+    // cloudDirectory is already a plain array here
+    if (cloudDirectory && Array.isArray(cloudDirectory)) {
+      addKnownPlayers(cloudDirectory as string[]);
     }
   }, [cloudDirectory]);
 
   // Derived state for filtering
   const filteredDirectory = useMemo(() => {
-    const list = cloudDirectory ? cloudDirectory.toArray() : [];
+    // Treat as plain array
+    const list = (cloudDirectory && Array.isArray(cloudDirectory)) ? [...cloudDirectory] : [];
     // Sort alphabetically
     list.sort();
     return list.filter(name => 
@@ -109,7 +111,8 @@ const DirectoryInner = ({ onClose, onSelect, existingNames }: Omit<PlayerDirecto
 
   const showAddButton = searchTerm.trim() && !filteredDirectory.includes(searchTerm.trim());
 
-  if (!cloudDirectory) return null; // Should be handled by Suspense, but safe guard
+  // Safe check for length
+  const isEmpty = !cloudDirectory || (Array.isArray(cloudDirectory) && cloudDirectory.length === 0);
 
   return (
     <div className="flex flex-col h-full bg-[#1a1a20]/95">
@@ -148,7 +151,7 @@ const DirectoryInner = ({ onClose, onSelect, existingNames }: Omit<PlayerDirecto
 
       {/* Grid List */}
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-          {cloudDirectory.length === 0 && !searchTerm && (
+          {isEmpty && !searchTerm && (
               <div className="text-center text-gray-500 py-10 border border-dashed border-white/5 rounded-xl">
                   名冊是空的。<br/>
                   請輸入名字來建立您的第一個雲端玩家。
