@@ -1,15 +1,18 @@
+
 export interface Player {
   id: string;
   name: string;
   buyInCount: number; // Number of buy-ins (sets) purchased
   finalChips: number; // Final chip count on the table
   netAmount?: number; // Calculated profit/loss
+  [key: string]: any;
 }
 
 export interface GameSettings {
   chipPerBuyIn: number; // E.g., 1000 chips per buy-in
   cashPerBuyIn: number; // E.g., 500 TWD per buy-in
   isLocked?: boolean; // New: If true, the game is finished and read-only
+  [key: string]: any;
 }
 
 export interface Transfer {
@@ -31,6 +34,7 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   timestamp: number;
+  [key: string]: any;
 }
 
 // Global Stats DB Structure
@@ -38,5 +42,6 @@ export interface GameLog {
   roomId: string;
   timestamp: number;
   hostName: string;
-  players: { name: string; net: number }[];
+  players: { name: string; net: number; [key: string]: any }[];
+  [key: string]: any;
 }

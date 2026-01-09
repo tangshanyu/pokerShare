@@ -6,10 +6,11 @@ import { ImportModal } from './components/ImportModal';
 import { PlayerDirectoryModal } from './components/PlayerDirectoryModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
-import { useStorage, useMutation, useOthers, useSelf } from './liveblocks.config';
-import { LiveObject } from '@liveblocks/client';
+import { useStorage, useMutation, useOthers, useSelf, RoomProvider } from './liveblocks.config';
+import { LiveObject, LiveList } from '@liveblocks/client';
+import { ClientSideSuspense } from "@liveblocks/react";
 
-// Icons
+// Icons (unchanged)
 const ChipsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 12h.01"/><path d="M12 16h.01"/><path d="M8 12h.01"/><path d="M12 8h.01"/></svg>
 );
@@ -38,6 +39,9 @@ const LockIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
 );
 
+// Constant ID for the shared database room (Must match RoomManager)
+const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
+
 interface AppProps {
   currentUser: {
     id: string;
@@ -46,6 +50,33 @@ interface AppProps {
     initialSettings?: { chip: number; cash: number };
   };
 }
+
+// --- Hidden Component to Sync Current User to Global Directory ---
+const GlobalPlayerSyncer = ({ name }: { name: string }) => {
+    const cloudDirectory = useStorage((root) => root.playerDirectory);
+    
+    const addToCloud = useMutation(({ storage }, newName: string) => {
+        let list = storage.get("playerDirectory");
+        if (!list) {
+            list = new LiveList<string>([]);
+            storage.set("playerDirectory", list);
+        }
+        
+        if (!list.toArray().includes(newName)) {
+            list.push(newName);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (cloudDirectory && name && name.trim()) {
+            if (!cloudDirectory.toArray().includes(name.trim())) {
+                addToCloud(name.trim());
+            }
+        }
+    }, [cloudDirectory, name, addToCloud]);
+
+    return null;
+};
 
 const App: React.FC<AppProps> = ({ currentUser }) => {
   // Liveblocks Hooks
@@ -275,6 +306,17 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   return (
     <div className="min-h-screen pb-20 font-sans selection:bg-poker-green selection:text-black">
       
+      {/* Invisible Sync Component to Auto-Add Joined Player to Cloud Directory */}
+      <RoomProvider 
+          id={GLOBAL_DB_ROOM_ID} 
+          initialPresence={{}} 
+          initialStorage={{ playerDirectory: new LiveList([]) }}
+      >
+          <ClientSideSuspense fallback={null}>
+            {() => <GlobalPlayerSyncer name={currentUser.name} />}
+          </ClientSideSuspense>
+      </RoomProvider>
+
       {/* Name Suggestions Datalist */}
       <datalist id="in-game-known-players">
         {knownPlayers.map((name, i) => (

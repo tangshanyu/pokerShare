@@ -13,6 +13,9 @@ interface RoomManagerProps {
   isHost?: boolean;
 }
 
+// Constant ID for the shared database room
+const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
+
 // --- Inner Component that Connects to Global DB ---
 // This runs INSIDE the Global DB Room Context
 const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
@@ -166,9 +169,7 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   const [globalRooms, setGlobalRooms] = useState<GlobalRoom[]>([]);
   const [isLoadingGlobal, setIsLoadingGlobal] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-
-  // Global DB Room ID constant
-  const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   // Determine mode
   const isLobbyMode = !settings || !updateSettings;
@@ -227,13 +228,40 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
          throw new Error(json.error || "Failed to fetch");
       }
       const data = await res.json();
-      setGlobalRooms(data.rooms || []);
+      
+      // Filter out the Database Room from the visual list
+      const filtered = (data.rooms || []).filter((r: GlobalRoom) => r.id !== GLOBAL_DB_ROOM_ID);
+      
+      setGlobalRooms(filtered);
     } catch (err: any) {
       console.error(err);
       setGlobalError(err.message || "Failed to load global rooms");
     } finally {
       setIsLoadingGlobal(false);
     }
+  };
+
+  const handleDeleteRoom = async (roomId: string) => {
+      if (!window.confirm(`Are you sure you want to permanently delete room "${roomId}"?`)) {
+          return;
+      }
+
+      setDeletingRoomId(roomId);
+      try {
+          const res = await fetch(`/api/rooms?roomId=${roomId}`, {
+              method: 'DELETE',
+          });
+          
+          if (!res.ok) throw new Error("Delete failed");
+          
+          // Remove from local list immediately for UI feedback
+          setGlobalRooms(prev => prev.filter(r => r.id !== roomId));
+      } catch (e) {
+          alert("Failed to delete room. Check console/network.");
+          console.error(e);
+      } finally {
+          setDeletingRoomId(null);
+      }
   };
 
   const handleToggleLock = () => {
@@ -401,8 +429,8 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                         <thead className="bg-white/5 text-gray-400 font-medium">
                             <tr>
                                 <th className="p-3">Room ID</th>
-                                <th className="p-3">Created At</th>
-                                <th className="p-3">Last Active</th>
+                                <th className="p-3">Created</th>
+                                <th className="p-3">Active</th>
                                 <th className="p-3 text-right">Action</th>
                             </tr>
                         </thead>
@@ -412,12 +440,20 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                                     <td className="p-3 font-mono text-blue-300">{room.id}</td>
                                     <td className="p-3 text-gray-500">{new Date(room.createdAt).toLocaleDateString()}</td>
                                     <td className="p-3 text-gray-400">{new Date(room.lastConnectionAt).toLocaleString()}</td>
-                                    <td className="p-3 text-right">
+                                    <td className="p-3 text-right flex justify-end space-x-2">
                                         <button 
                                             onClick={() => switchRoom(room.id)}
-                                            className="text-gray-500 hover:text-white group-hover:underline"
+                                            className="text-gray-500 hover:text-white group-hover:underline px-2 py-1"
                                         >
-                                            Inspect
+                                            View
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDeleteRoom(room.id)}
+                                            disabled={deletingRoomId === room.id}
+                                            className="text-red-500/50 hover:text-red-500 px-2 py-1 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+                                            title="Delete Room"
+                                        >
+                                            {deletingRoomId === room.id ? '...' : '🗑️'}
                                         </button>
                                     </td>
                                 </tr>

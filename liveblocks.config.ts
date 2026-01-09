@@ -1,3 +1,4 @@
+
 import { createClient } from "@liveblocks/client";
 import { createRoomContext } from "@liveblocks/react";
 import { LiveList, LiveObject } from "@liveblocks/client";
@@ -52,6 +53,8 @@ type Storage = {
   // Global Database Room Fields
   gameLogs?: LiveList<GameLog>;
   playerDirectory?: LiveList<string>; // New: Synced List of Known Players
+
+  [key: string]: any; // Required for LsonObject constraint compatibility
 };
 
 export const {
