@@ -2,6 +2,12 @@ import { Player, GameSettings, Transfer, CalculationResult } from '../types';
 
 export const calculateSettlement = (players: readonly Player[], settings: Readonly<GameSettings>): CalculationResult => {
   const { chipPerBuyIn, cashPerBuyIn } = settings;
+  
+  // Guard against division by zero
+  if (chipPerBuyIn === 0) {
+      return { players: [], transfers: [], totalBalance: 0, isBalanced: false };
+  }
+
   const exchangeRate = cashPerBuyIn / chipPerBuyIn; // Cash per 1 chip
 
   let totalBalance = 0;
@@ -23,26 +29,29 @@ export const calculateSettlement = (players: readonly Player[], settings: Readon
   });
 
   // Check if roughly balanced (tolerance of +/- 1 due to rounding)
-  const isBalanced = Math.abs(totalBalance) <= 1;
+  // If not balanced, we DO NOT calculate transfers to avoid fighting
+  const isBalanced = Math.abs(totalBalance) <= (exchangeRate < 1 ? 5 : 1);
 
-  // 2. Calculate Transfers (only if effectively balanced, otherwise we just return stats)
+  // 2. Calculate Transfers
   const transfers: Transfer[] = [];
   
   if (isBalanced) {
     // Separate winners and losers
+    // Clone objects to avoid mutating the original array reference during calculation
     let debtors = calculatedPlayers
       .filter(p => (p.netAmount || 0) < 0)
       .map(p => ({ ...p, netAmount: p.netAmount || 0 }))
-      .sort((a, b) => a.netAmount - b.netAmount); // Ascending (most negative first)
+      .sort((a, b) => a.netAmount - b.netAmount); // Ascending (most negative first, e.g. -1000, -500)
 
     let creditors = calculatedPlayers
       .filter(p => (p.netAmount || 0) > 0)
       .map(p => ({ ...p, netAmount: p.netAmount || 0 }))
-      .sort((a, b) => b.netAmount - a.netAmount); // Descending (most positive first)
+      .sort((a, b) => b.netAmount - a.netAmount); // Descending (most positive first, e.g. 1000, 500)
 
     let debtorIdx = 0;
     let creditorIdx = 0;
 
+    // Greedy algorithm to settle debts
     while (debtorIdx < debtors.length && creditorIdx < creditors.length) {
       const debtor = debtors[debtorIdx];
       const creditor = creditors[creditorIdx];
@@ -50,6 +59,7 @@ export const calculateSettlement = (players: readonly Player[], settings: Readon
       const debtAmount = Math.abs(debtor.netAmount);
       const creditAmount = creditor.netAmount;
       
+      // The amount to transfer is the minimum of what debtor owes vs what creditor is owed
       const transferAmount = Math.min(debtAmount, creditAmount);
 
       if (transferAmount > 0) {
@@ -64,90 +74,75 @@ export const calculateSettlement = (players: readonly Player[], settings: Readon
       debtor.netAmount += transferAmount;
       creditor.netAmount -= transferAmount;
 
-      // Move indices if settled
+      // Move indices if settled (using small epsilon for float safety, though we rounded earlier)
       if (Math.abs(debtor.netAmount) < 0.1) debtorIdx++;
-      if (Math.abs(creditor.netAmount) < 0.1) creditorIdx++;
+      if (creditor.netAmount < 0.1) creditorIdx++;
     }
   }
 
   return {
     players: calculatedPlayers,
     transfers,
-    totalBalance,
+    totalBalance, // If this is not 0, the UI should warn the user
     isBalanced
   };
 };
 
-// URL State Management
-export const serializeState = (players: readonly Player[], settings: Readonly<GameSettings>): string => {
-  const data = { p: players, s: settings };
-  // encodeURIComponent ensures the string is safe for btoa (handles Unicode/Chinese)
-  return btoa(encodeURIComponent(JSON.stringify(data)));
-};
-
-export const deserializeState = (hash: string): { players: Player[], settings: GameSettings } | null => {
-  try {
-    const decoded = atob(hash);
-    try {
-      // Try treating as URI-encoded (new format for Unicode support)
-      const json = decodeURIComponent(decoded);
-      const data = JSON.parse(json);
-      return { players: data.p, settings: data.s };
-    } catch (uriError) {
-      // Fallback for legacy URLs (plain JSON) or malformed URI sequences
-      // This ensures old links created before this update still work
-      const data = JSON.parse(decoded);
-      return { players: data.p, settings: data.s };
-    }
-  } catch (e) {
-    console.error("Failed to parse state from URL", e);
-    return null;
-  }
-};
-
 // --- Export Helpers ---
 
-export const generateCSV = (result: CalculationResult): string => {
-  const headers = ['Player', 'Buy-ins', 'Final Chips', 'Net Profit/Loss'];
-  const rows = result.players.map(p => [
-    p.name,
-    p.buyInCount,
-    p.finalChips,
-    p.netAmount
-  ]);
-  
-  const transferHeaders = ['From', 'To', 'Amount'];
-  const transferRows = result.transfers.map(t => [t.fromName, t.toName, t.amount]);
+export const generateTextSummary = (result: CalculationResult, settings: GameSettings): string => {
+    let text = `🎲 Poker Settlement Results 🎲\n`;
+    text += `---------------------------\n`;
+    
+    if (!result.isBalanced) {
+        text += `⚠️ ERROR: Game Not Balanced!\n`;
+        text += `Discrepancy: ${result.totalBalance > 0 ? '+' : ''}${result.totalBalance}\n`;
+        text += `Please check chips and buy-ins.\n`;
+        text += `---------------------------\n`;
+    }
 
-  let csv = headers.join(',') + '\n';
-  rows.forEach(r => csv += r.join(',') + '\n');
-  
-  csv += '\nTRANSFERS\n' + transferHeaders.join(',') + '\n';
-  transferRows.forEach(r => csv += r.join(',') + '\n');
+    // Players
+    text += `[Player Stats]\n`;
+    result.players.sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0)).forEach(p => {
+        const net = p.netAmount || 0;
+        const sign = net > 0 ? '+' : '';
+        text += `${p.name}: ${sign}${net} (Buy: ${p.buyInCount}, Chips: ${p.finalChips})\n`;
+    });
 
-  return csv;
+    // Transfers
+    if (result.isBalanced && result.transfers.length > 0) {
+        text += `\n[Transfers - Who Pays Whom]\n`;
+        result.transfers.forEach(t => {
+            text += `💸 ${t.fromName} ➔ $${t.amount} ➔ ${t.toName}\n`;
+        });
+    } else if (result.isBalanced) {
+        text += `\nNo transfers needed (Perfectly Settled).\n`;
+    }
+
+    return text;
 };
 
 export const generateHTMLTable = (result: CalculationResult, settings: Readonly<GameSettings>): string => {
-  // Inline styles are required for copy-paste to Google Docs
-  const tableStyle = "border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; border: 1px solid #ccc;";
-  const thStyle = "background-color: #f3f3f3; border: 1px solid #ccc; padding: 8px; text-align: left;";
-  const tdStyle = "border: 1px solid #ccc; padding: 8px;";
-  const profitStyle = "color: #2e7d32; font-weight: bold;";
-  const lossStyle = "color: #c62828; font-weight: bold;";
+  // Inline styles are required for copy-paste to Google Docs/Line Keep
+  const tableStyle = "border-collapse: collapse; width: 100%; font-family: sans-serif; font-size: 14px;";
+  const thStyle = "border-bottom: 2px solid #ddd; padding: 8px; text-align: left; color: #666;";
+  const tdStyle = "border-bottom: 1px solid #eee; padding: 8px;";
+  const profitStyle = "color: #00AA00; font-weight: bold;";
+  const lossStyle = "color: #CC0000; font-weight: bold;";
 
   let html = `
-    <h2 style="font-family: Arial, sans-serif;">Poker Settlement Result</h2>
-    <p>1 Buy-in = $${settings.cashPerBuyIn} (${settings.chipPerBuyIn} Chips)</p>
+    <div style="font-family: sans-serif; padding: 10px;">
+    <h3 style="margin: 0 0 10px 0;">🎲 Poker Settlement</h3>
+    <p style="font-size: 12px; color: #888; margin: 0 0 15px 0;">1 Buy-in = $${settings.cashPerBuyIn} / ${settings.chipPerBuyIn} Chips</p>
     
-    <h3 style="font-family: Arial, sans-serif;">Player Results</h3>
+    <h4 style="margin: 0 0 5px 0;">📊 Player Result</h4>
     <table style="${tableStyle}">
       <thead>
         <tr>
           <th style="${thStyle}">Player</th>
-          <th style="${thStyle}">Buy-ins</th>
+          <th style="${thStyle}">Buy</th>
           <th style="${thStyle}">Chips</th>
-          <th style="${thStyle}">Net Amount</th>
+          <th style="${thStyle}">Net</th>
         </tr>
       </thead>
       <tbody>
@@ -160,43 +155,37 @@ export const generateHTMLTable = (result: CalculationResult, settings: Readonly<
     
     html += `
       <tr>
-        <td style="${tdStyle}">${p.name}</td>
+        <td style="${tdStyle} font-weight: bold;">${p.name}</td>
         <td style="${tdStyle}">${p.buyInCount}</td>
         <td style="${tdStyle}">${p.finalChips}</td>
-        <td style="${tdStyle} ${style}">${sign}$${net}</td>
+        <td style="${tdStyle} ${style}">${sign}${net}</td>
       </tr>
     `;
   });
 
   html += `</tbody></table>`;
 
-  if (result.transfers.length > 0) {
+  if (result.isBalanced && result.transfers.length > 0) {
     html += `
-      <h3 style="font-family: Arial, sans-serif; margin-top: 20px;">Transfers</h3>
+      <h4 style="margin: 20px 0 5px 0;">💸 Transfers (Who Pays Whom)</h4>
       <table style="${tableStyle}">
-        <thead>
-          <tr>
-            <th style="${thStyle}">From</th>
-            <th style="${thStyle}">To</th>
-            <th style="${thStyle}">Amount</th>
-          </tr>
-        </thead>
         <tbody>
     `;
 
     result.transfers.forEach(t => {
       html += `
         <tr>
-          <td style="${tdStyle} color: #c62828;">${t.fromName}</td>
-          <td style="${tdStyle} color: #2e7d32;">${t.toName}</td>
-          <td style="${tdStyle} font-weight: bold;">$${t.amount}</td>
+          <td style="${tdStyle}"><span style="${lossStyle}">${t.fromName}</span></td>
+          <td style="${tdStyle} text-align: center;">pays <strong>$${t.amount}</strong> to</td>
+          <td style="${tdStyle}"><span style="${profitStyle}">${t.toName}</span></td>
         </tr>
       `;
     });
     html += `</tbody></table>`;
-  } else {
-    html += `<p style="font-family: Arial, sans-serif; margin-top: 20px;">No transfers needed.</p>`;
+  } else if (!result.isBalanced) {
+      html += `<p style="color: red; font-weight: bold; margin-top: 20px;">⚠️ Unbalanced: ${result.totalBalance > 0 ? '+' : ''}${result.totalBalance}</p>`;
   }
 
+  html += `</div>`;
   return html;
 };

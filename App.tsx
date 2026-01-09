@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Player, CalculationResult } from './types';
-import { calculateSettlement, generateHTMLTable } from './utils/pokerLogic';
+import { calculateSettlement } from './utils/pokerLogic';
 import { saveGameLog } from './utils/storage';
 import { ImportModal } from './components/ImportModal';
 import { PlayerDirectoryModal } from './components/PlayerDirectoryModal';
 import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
+import { SettlementModal } from './components/SettlementModal';
 import { useStorage, useMutation, useOthers, useStatus } from './liveblocks.config';
 
 // Icons
@@ -75,6 +76,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   
   // -- Mutations --
 
@@ -101,6 +103,12 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
     const index = playersList?.findIndex((p) => p.id === id);
     if (index !== undefined && index !== -1 && playersList) {
       const p = playersList.get(index);
+      
+      // Strict validation for chips
+      if (field === 'finalChips') {
+          value = Math.max(0, Number(value) || 0);
+      }
+      
       playersList.set(index, { ...p, [field]: value });
     }
   }, []);
@@ -149,28 +157,17 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
   // -- Handlers --
 
-  const handleShare = async () => {
+  const handleOpenSettlement = () => {
     if (!calculation || !settings) return;
     
-    const resultText = generateHTMLTable(calculation, settings);
     const roomId = new URLSearchParams(window.location.search).get("room");
     
-    if (roomId) saveGameLog(roomId, calculation, currentUser.name);
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Poker Settlement',
-          text: `Room: ${roomId}\nBalance: $${calculation.totalBalance}`,
-          url: window.location.href
-        });
-      } catch (e) {
-        console.log("Share cancelled");
-      }
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-      alert("連結已複製到剪貼簿 (Link Copied)");
+    // Save to history log automatically when Host opens settlement
+    if (roomId && calculation.isBalanced) {
+        saveGameLog(roomId, calculation, currentUser.name);
     }
+
+    setIsSettlementOpen(true);
   };
 
   const existingPlayerNames = players ? players.map(p => p.name) : [];
@@ -303,8 +300,9 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
                     inputMode="numeric"
                     disabled={isLocked}
                     value={player.finalChips === 0 ? '' : player.finalChips}
-                    onChange={(e) => updatePlayer(player.id, 'finalChips', Number(e.target.value))}
+                    onChange={(e) => updatePlayer(player.id, 'finalChips', e.target.value)}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     className="w-full h-full bg-transparent text-center font-mono text-xl font-bold text-poker-gold focus:outline-none pt-3"
                   />
                </div>
@@ -341,7 +339,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
           <div className="pointer-events-auto">
               {currentUser.isHost && (
                   <button 
-                    onClick={handleShare}
+                    onClick={handleOpenSettlement}
                     className="px-8 py-3 bg-gradient-to-r from-poker-gold to-orange-500 text-black font-bold rounded-full shadow-[0_0_20px_rgba(255,165,2,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
                   >
                       <ShareIcon />
@@ -364,7 +362,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
       </div>
 
       {/* Balance Warning Overlay */}
-      {calculation && Math.abs(calculation.totalBalance) > 5 && (
+      {calculation && Math.abs(calculation.totalBalance) > 5 && !isSettlementOpen && (
             <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
                 <div className="glass-panel bg-red-500/20 border-red-500/40 text-red-100 px-4 py-1.5 rounded-full text-center text-xs font-bold animate-bounce shadow-lg backdrop-blur-md">
                 ⚠️ Balance: {calculation.totalBalance > 0 ? '+' : ''}{calculation.totalBalance}
@@ -407,6 +405,13 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
          currentUser={currentUser}
          isOpen={isChatOpen}
          onClose={() => setIsChatOpen(false)}
+      />
+
+      <SettlementModal
+        isOpen={isSettlementOpen}
+        onClose={() => setIsSettlementOpen(false)}
+        result={calculation}
+        settings={settings}
       />
 
     </div>
