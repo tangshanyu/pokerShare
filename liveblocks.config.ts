@@ -63,4 +63,5 @@ export const {
   useStorage,
   useMutation,
   useSelf,
+  useStatus,
 } = createRoomContext<Presence, Storage>(client);

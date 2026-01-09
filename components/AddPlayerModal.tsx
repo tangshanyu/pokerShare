@@ -198,9 +198,12 @@ export const AddPlayerModal: React.FC<AddPlayerModalProps> = (props) => {
             initialStorage={{ playerDirectory: new LiveList([]) }}
         >
             <ClientSideSuspense fallback={
-                <div className="h-[350px] flex flex-col items-center justify-center text-poker-green space-y-4">
-                     <div className="w-10 h-10 border-4 border-poker-green border-t-transparent rounded-full animate-spin"></div>
-                     <p className="text-sm font-mono animate-pulse">Loading Database...</p>
+                <div className="h-[350px] flex flex-col items-center justify-center text-poker-green bg-[#1a1a20]">
+                     <div className="relative w-12 h-12 mb-4">
+                        <div className="absolute inset-0 rounded-full border-4 border-white/5"></div>
+                        <div className="absolute inset-0 rounded-full border-4 border-t-poker-green border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+                     </div>
+                     <p className="text-sm font-mono animate-pulse">Syncing Database...</p>
                 </div>
             }>
                 <AddPlayerInner {...props} />

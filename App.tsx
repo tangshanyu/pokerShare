@@ -7,7 +7,7 @@ import { PlayerDirectoryModal } from './components/PlayerDirectoryModal';
 import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
-import { useStorage, useMutation, useOthers } from './liveblocks.config';
+import { useStorage, useMutation, useOthers, useStatus } from './liveblocks.config';
 
 // Icons
 const ShareIcon = () => (
@@ -32,14 +32,44 @@ const DirectoryIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
 );
 
+// Styled Loading Component
+const LoadingBlock = ({ message = "Loading..." }: { message?: string }) => (
+  <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#0f0f13]/90 backdrop-blur-md animate-fade-in transition-all duration-300">
+    <div className="relative mb-6">
+       {/* Glow effect */}
+       <div className="absolute inset-0 bg-poker-green/20 blur-xl rounded-full animate-pulse"></div>
+       
+       {/* Spinner */}
+       <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-white/5"></div>
+          <div className="absolute inset-0 rounded-full border-4 border-t-poker-green border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+       </div>
+       
+       {/* Center Icon */}
+       <div className="absolute inset-0 flex items-center justify-center text-2xl">
+          🎲
+       </div>
+    </div>
+    
+    <div className="flex flex-col items-center space-y-2">
+       <span className="text-white font-bold text-lg tracking-widest uppercase animate-pulse font-mono">{message}</span>
+       <div className="flex space-x-1">
+          <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+          <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+          <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+       </div>
+    </div>
+  </div>
+);
+
 export const App = ({ currentUser }: { currentUser: { id: string, name: string, isHost: boolean, initialSettings?: any } }) => {
   const players = useStorage((root) => root.players);
   const settings = useStorage((root) => root.settings);
   const messages = useStorage((root) => root.messages);
   const others = useOthers();
+  const status = useStatus(); // Check connection status
   
   // Local UI State
-  const [calculation, setCalculation] = useState<CalculationResult | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
@@ -101,20 +131,20 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
   // Auto-join logic
   useEffect(() => {
-    if (players && currentUser.name) {
+    if (status === 'connected' && players && currentUser.name) {
       const exists = players.some(p => p.name === currentUser.name);
       if (!exists) {
         addPlayer(currentUser.name, true);
       }
     }
-  }, [players, currentUser.name, addPlayer]);
+  }, [status, players, currentUser.name, addPlayer]);
 
   // Calculations
-  useEffect(() => {
+  const calculation = useMemo(() => {
     if (players && settings) {
-      const result = calculateSettlement(players, settings);
-      setCalculation(result);
+      return calculateSettlement(players, settings);
     }
+    return null;
   }, [players, settings]);
 
   // -- Handlers --
@@ -122,11 +152,9 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
   const handleShare = async () => {
     if (!calculation || !settings) return;
     
-    // settings is already an object from useStorage
     const resultText = generateHTMLTable(calculation, settings);
     const roomId = new URLSearchParams(window.location.search).get("room");
     
-    // Save to history log on share
     if (roomId) saveGameLog(roomId, calculation, currentUser.name);
 
     if (navigator.share) {
@@ -140,7 +168,6 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
         console.log("Share cancelled");
       }
     } else {
-      // Fallback: Copy Link
       navigator.clipboard.writeText(window.location.href);
       alert("連結已複製到剪貼簿 (Link Copied)");
     }
@@ -148,13 +175,9 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
   const existingPlayerNames = players ? players.map(p => p.name) : [];
 
-  // Loading state
+  // Loading state (Block UI)
   if (!players || !settings) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-poker-green">
-        Loading Room Data...
-      </div>
-    );
+    return <LoadingBlock message="Joining Room" />;
   }
 
   const isLocked = settings.isLocked;
@@ -162,6 +185,9 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
   return (
     <div className="max-w-md mx-auto min-h-screen flex flex-col pb-32 relative overflow-hidden">
       
+      {/* Reconnecting Overlay */}
+      {status === 'reconnecting' && <LoadingBlock message="Reconnecting" />}
+
       {/* Top Bar - Tools & Settings */}
       <div className="px-4 pt-6 pb-2 flex justify-between items-center z-10">
         <div>
@@ -171,7 +197,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
            <div className="flex items-center space-x-2 text-[10px] text-gray-400">
               <span className="bg-white/5 px-2 py-0.5 rounded border border-white/5">Room: {new URLSearchParams(window.location.search).get("room")}</span>
               <span className="flex items-center text-green-400">
-                 <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1 animate-pulse"></span>
+                 <span className={`w-1.5 h-1.5 rounded-full mr-1 ${status === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
                  {others.length + 1} Online
               </span>
            </div>

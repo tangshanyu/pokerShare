@@ -453,6 +453,30 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
   );
 };
 
+// Global Loading Component for Root and Screens
+const Loading = ({ message = "Loading..." }: { message?: string }) => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-[#0f0f13] text-white overflow-hidden">
+      <div className="relative mb-6">
+         <div className="absolute inset-0 bg-poker-green/20 blur-xl rounded-full animate-pulse"></div>
+         <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-4 border-white/5"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-t-poker-green border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+         </div>
+         <div className="absolute inset-0 flex items-center justify-center text-xl">
+            🎲
+         </div>
+      </div>
+      <div className="flex flex-col items-center space-y-2">
+         <span className="text-white font-bold text-lg tracking-widest uppercase animate-pulse font-mono">{message}</span>
+         <div className="flex space-x-1">
+            <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+            <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+         </div>
+      </div>
+  </div>
+);
+
 // --- Wrapper Components to Provide Global DB Context ---
 
 const CreateRoomScreen = (props: any) => (
@@ -462,12 +486,7 @@ const CreateRoomScreen = (props: any) => (
         initialPresence={{}} 
         initialStorage={{ playerDirectory: new LiveList([]) }}
       >
-        <ClientSideSuspense fallback={
-           <div className="animate-pulse flex flex-col items-center">
-              <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
-              <div className="text-sm font-mono text-poker-green">Connecting to Global Database...</div>
-           </div>
-        }>
+        <ClientSideSuspense fallback={<Loading message="Global DB Sync..." />}>
            <CreateRoomForm {...props} />
         </ClientSideSuspense>
       </RoomProvider>
@@ -480,14 +499,7 @@ const ReportsPage = ({ onBack }: { onBack: () => void }) => (
        initialPresence={{}} 
        initialStorage={{ gameLogs: new LiveList([]) }}
      >
-       <ClientSideSuspense fallback={
-          <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
-             <div className="animate-pulse flex flex-col items-center">
-                 <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
-                 <div className="text-sm font-mono">Loading Reports...</div>
-             </div>
-          </div>
-       }>
+       <ClientSideSuspense fallback={<Loading message="Loading Reports..." />}>
           <ReportsScreen onBack={onBack} />
        </ClientSideSuspense>
      </RoomProvider>
@@ -500,12 +512,7 @@ const JoinRoomScreen = (props: any) => (
         initialPresence={{}} 
         initialStorage={{ playerDirectory: new LiveList([]) }}
       >
-        <ClientSideSuspense fallback={
-           <div className="animate-pulse flex flex-col items-center">
-              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <div className="text-sm font-mono text-blue-400">Loading Room...</div>
-           </div>
-        }>
+        <ClientSideSuspense fallback={<Loading message="Syncing DB..." />}>
            <JoinRoomForm {...props} />
         </ClientSideSuspense>
       </RoomProvider>
@@ -520,16 +527,6 @@ const MissingKeyScreen = () => (
         <h1 className="text-2xl font-bold mb-2">Configuration Missing</h1>
         <p className="text-gray-400 mb-6 text-sm">Liveblocks API Key is missing.</p>
         <code className="block text-xs font-mono text-poker-green bg-black/40 p-2 rounded">VITE_LIVEBLOCKS_PUBLIC_KEY</code>
-    </div>
-  </div>
-);
-
-// Loading Screen (Main App)
-const Loading = () => (
-  <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-poker-green">
-    <div className="animate-pulse flex flex-col items-center">
-       <div className="w-12 h-12 border-4 border-poker-green border-t-transparent rounded-full animate-spin mb-4"></div>
-       <div className="text-sm font-mono">Connecting to Room...</div>
     </div>
   </div>
 );
@@ -604,7 +601,7 @@ const Root = () => {
         })
       }}
     >
-      <ClientSideSuspense fallback={<Loading />}>
+      <ClientSideSuspense fallback={<Loading message="Joining Room..." />}>
         <App currentUser={userState} />
       </ClientSideSuspense>
     </RoomProvider>
