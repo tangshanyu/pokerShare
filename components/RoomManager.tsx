@@ -20,6 +20,7 @@ const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
 // This runs INSIDE the Global DB Room Context
 const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
   const globalGameLogs = useStorage((root) => root.gameLogs);
+  const playerDirectory = useStorage((root) => root.playerDirectory);
   const [localStatus, setLocalStatus] = useState("Syncing...");
   
   // Define Mutation to push pending logs
@@ -42,6 +43,17 @@ const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
              remoteLogs!.push(log);
           }
       });
+  }, []);
+
+  // Mutations for Data Management
+  const clearLogs = useMutation(({ storage }) => {
+      const logs = storage.get("gameLogs");
+      if (logs) logs.clear();
+  }, []);
+
+  const clearDirectory = useMutation(({ storage }) => {
+      const dir = storage.get("playerDirectory");
+      if (dir) dir.clear();
   }, []);
 
   // Sync Effect
@@ -83,16 +95,71 @@ const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
     return Array.from(map.values()).sort((a, b) => b.totalNet - a.totalNet);
   }, [globalGameLogs]);
 
+  // Handlers
+  const handleClearLogs = () => {
+      if (window.confirm("⚠️ 危險操作：您確定要刪除所有「戰績紀錄」嗎？\n此動作無法復原，所有排行榜資料將被清空。")) {
+          if (window.confirm("再次確認：真的要刪除嗎？")) {
+             clearLogs();
+          }
+      }
+  };
+
+  const handleClearDirectory = () => {
+      if (window.confirm("⚠️ 危險操作：您確定要刪除所有「雲端玩家名冊」嗎？\n這將移除所有已儲存的玩家名字建議。")) {
+          if (window.confirm("再次確認：真的要刪除嗎？")) {
+             clearDirectory();
+          }
+      }
+  };
+
   return (
       <div className="h-full flex flex-col">
           <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="text-xs font-bold text-poker-gold uppercase tracking-wider">Global Leaderboard (Cloud DB)</h3>
+                <h3 className="text-xs font-bold text-poker-gold uppercase tracking-wider">Global Database (Cloud)</h3>
                 <p className="text-[10px] text-gray-400 mt-1">Status: <span className="text-poker-green">{localStatus}</span></p>
               </div>
-              <div className="text-[10px] text-gray-500 bg-white/5 px-2 py-1 rounded">
-                 Records: {globalGameLogs?.length || 0}
-              </div>
+          </div>
+
+          {/* Database Management Controls */}
+          <div className="grid grid-cols-2 gap-3 mb-4 shrink-0">
+             <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex flex-col justify-between group hover:border-red-500/30 transition-colors">
+                 <div className="mb-2 flex justify-between items-start">
+                    <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase">Player Directory</h4>
+                        <div className="text-xl font-mono text-white mt-1">{playerDirectory ? playerDirectory.length : '...'}</div>
+                    </div>
+                    <div className="text-xl opacity-20 group-hover:opacity-50 group-hover:text-red-500">👤</div>
+                 </div>
+                 <button 
+                    onClick={handleClearDirectory}
+                    className="w-full py-2 bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 text-[10px] font-bold uppercase rounded-lg border border-white/5 hover:border-red-500/30 transition-all"
+                 >
+                    Clear Names
+                 </button>
+             </div>
+             <div className="bg-white/5 border border-white/10 p-3 rounded-xl flex flex-col justify-between group hover:border-red-500/30 transition-colors">
+                 <div className="mb-2 flex justify-between items-start">
+                    <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase">Game Logs</h4>
+                        <div className="text-xl font-mono text-white mt-1">{globalGameLogs ? globalGameLogs.length : '...'}</div>
+                    </div>
+                    <div className="text-xl opacity-20 group-hover:opacity-50 group-hover:text-red-500">📜</div>
+                 </div>
+                 <button 
+                    onClick={handleClearLogs}
+                    className="w-full py-2 bg-white/5 hover:bg-red-500/20 text-gray-400 hover:text-red-400 text-[10px] font-bold uppercase rounded-lg border border-white/5 hover:border-red-500/30 transition-all"
+                 >
+                    Clear History
+                 </button>
+             </div>
+          </div>
+
+          <div className="flex justify-between items-center mb-2 mt-2">
+             <h4 className="text-[10px] font-bold text-gray-500 uppercase">Leaderboard Preview</h4>
+             <div className="text-[10px] text-gray-600 bg-white/5 px-2 py-1 rounded">
+                 {playerStats.length} Players
+             </div>
           </div>
 
           {!globalGameLogs ? (
@@ -320,7 +387,7 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                 onClick={() => setActiveTab('player_stats')}
                 className={`flex-1 py-3 px-4 whitespace-nowrap text-sm font-medium transition-colors ${activeTab === 'player_stats' ? 'text-poker-gold border-b-2 border-poker-gold bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
             >
-                🏆 Player Stats
+                🏆 DB & Stats
             </button>
             <button 
                 onClick={() => setActiveTab('rooms')}
@@ -394,7 +461,10 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
               <RoomProvider 
                   id={GLOBAL_DB_ROOM_ID} 
                   initialPresence={{}} 
-                  initialStorage={{ gameLogs: new LiveList([]) }}
+                  initialStorage={{ 
+                      gameLogs: new LiveList([]),
+                      playerDirectory: new LiveList([]) 
+                  }}
               >
                  <ClientSideSuspense fallback={
                     <div className="py-12 flex justify-center text-gray-500">

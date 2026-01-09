@@ -76,7 +76,9 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
   const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+  
+  // Handling global settlement state vs local dismissal
+  const [isLocalSettlementDismissed, setIsLocalSettlementDismissed] = useState(false);
   
   // -- Mutations --
 
@@ -155,6 +157,13 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
     return null;
   }, [players, settings]);
 
+  // Sync Local Dismissal state: If host opens settlement again, re-open for local user
+  useEffect(() => {
+      if (settings?.showSettlement) {
+          setIsLocalSettlementDismissed(false);
+      }
+  }, [settings?.showSettlement]);
+
   // -- Handlers --
 
   const handleOpenSettlement = () => {
@@ -162,15 +171,31 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
     
     const roomId = new URLSearchParams(window.location.search).get("room");
     
-    // Save to history log automatically when Host opens settlement
+    // Save log
     if (roomId && calculation.isBalanced) {
         saveGameLog(roomId, calculation, currentUser.name);
     }
 
-    setIsSettlementOpen(true);
+    // Trigger global settlement
+    updateSettings({ showSettlement: true, isLocked: true });
+  };
+
+  const handleCloseSettlement = () => {
+      if (currentUser.isHost) {
+          // Host closes for everyone
+          if (confirm("關閉結算視窗將會對所有人關閉。\n(Closing settlement will close it for everyone.)")) {
+              updateSettings({ showSettlement: false });
+          }
+      } else {
+          // Guest just dismisses locally
+          setIsLocalSettlementDismissed(true);
+      }
   };
 
   const existingPlayerNames = players ? players.map(p => p.name) : [];
+
+  // Determine modal visibility: Global flag AND not locally dismissed
+  const isSettlementVisible = (settings?.showSettlement === true) && !isLocalSettlementDismissed;
 
   // Loading state (Block UI)
   if (!players || !settings) {
@@ -335,16 +360,27 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
               )}
           </div>
 
-          {/* Center: Settlement (Host Only) */}
-          <div className="pointer-events-auto">
-              {currentUser.isHost && (
+          {/* Center: Settlement (Host Only or Re-Open) */}
+          <div className="pointer-events-auto flex flex-col items-center space-y-2">
+              {currentUser.isHost ? (
                   <button 
                     onClick={handleOpenSettlement}
                     className="px-8 py-3 bg-gradient-to-r from-poker-gold to-orange-500 text-black font-bold rounded-full shadow-[0_0_20px_rgba(255,165,2,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
                   >
                       <ShareIcon />
-                      <span>結算 (Settle)</span>
+                      <span>{settings.showSettlement ? '已開啟結算 (Open)' : '結算 (Settle)'}</span>
                   </button>
+              ) : (
+                  // If settlement is active but dismissed by guest, allow them to re-open it
+                  settings.showSettlement && isLocalSettlementDismissed && (
+                      <button 
+                        onClick={() => setIsLocalSettlementDismissed(false)}
+                        className="px-6 py-2 bg-poker-gold/20 text-poker-gold border border-poker-gold/50 font-bold rounded-full backdrop-blur-md shadow-lg flex items-center space-x-2"
+                      >
+                          <ShareIcon />
+                          <span>查看結算 (View)</span>
+                      </button>
+                  )
               )}
           </div>
 
@@ -362,7 +398,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
       </div>
 
       {/* Balance Warning Overlay */}
-      {calculation && Math.abs(calculation.totalBalance) > 5 && !isSettlementOpen && (
+      {calculation && Math.abs(calculation.totalBalance) > 5 && !isSettlementVisible && (
             <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
                 <div className="glass-panel bg-red-500/20 border-red-500/40 text-red-100 px-4 py-1.5 rounded-full text-center text-xs font-bold animate-bounce shadow-lg backdrop-blur-md">
                 ⚠️ Balance: {calculation.totalBalance > 0 ? '+' : ''}{calculation.totalBalance}
@@ -408,8 +444,8 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
       />
 
       <SettlementModal
-        isOpen={isSettlementOpen}
-        onClose={() => setIsSettlementOpen(false)}
+        isOpen={isSettlementVisible}
+        onClose={handleCloseSettlement}
         result={calculation}
         settings={settings}
       />

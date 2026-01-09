@@ -597,7 +597,8 @@ const Root = () => {
         settings: new LiveObject({
           chipPerBuyIn: userState.initialSettings?.chip || 1000,
           cashPerBuyIn: userState.initialSettings?.cash || 500,
-          isLocked: false
+          isLocked: false,
+          showSettlement: false
         })
       }}
     >

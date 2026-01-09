@@ -11,7 +11,8 @@ export interface Player {
 export interface GameSettings {
   chipPerBuyIn: number; // E.g., 1000 chips per buy-in
   cashPerBuyIn: number; // E.g., 500 TWD per buy-in
-  isLocked?: boolean; // New: If true, the game is finished and read-only
+  isLocked?: boolean; // If true, the game is finished and read-only
+  showSettlement?: boolean; // If true, the settlement modal is open for everyone
   [key: string]: any;
 }
 
