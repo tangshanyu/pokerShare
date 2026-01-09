@@ -212,7 +212,11 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
       {/* Top Bar - Tools & Settings */}
       <div className="px-4 pt-6 pb-2 flex justify-between items-center z-10">
-        <div>
+        <div 
+          onClick={() => window.location.href = window.location.origin} 
+          className="cursor-pointer hover:opacity-80 transition-opacity"
+          title="Return to Home"
+        >
            {settings.gameTitle ? (
                <div className="flex flex-col">
                    <h1 className="text-xl font-bold text-white truncate max-w-[200px]">
@@ -237,7 +241,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
            </div>
         </div>
         <div className="flex space-x-2">
-            {!isLocked && (
+            {!isLocked && currentUser.isHost && (
                 <>
                     <button 
                     onClick={() => setIsImportOpen(true)}
@@ -276,7 +280,13 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
         )}
 
         {/* Players List */}
-        {players.map((player) => (
+        {players.map((player) => {
+          // Permissions Logic
+          const isMe = player.name === currentUser.name;
+          const canEdit = currentUser.isHost || isMe;
+          const canDelete = currentUser.isHost || isMe;
+
+          return (
           <div key={player.id} className="glass-panel rounded-2xl p-4 transition-all hover:border-white/20">
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center">
@@ -294,10 +304,13 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
                    )}
                 </div>
               </div>
-              {!isLocked && (
+              {!isLocked && canDelete && (
                 <button 
                   onClick={() => {
-                    if (confirm(`Remove ${player.name}?`)) removePlayer(player.id);
+                    const msg = isMe 
+                        ? "Are you sure you want to leave?" 
+                        : `Remove ${player.name}?`;
+                    if (confirm(msg)) removePlayer(player.id);
                   }}
                   className="text-gray-600 hover:text-red-500 transition-colors p-1"
                 >
@@ -308,11 +321,11 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
             <div className="grid grid-cols-2 gap-4">
                {/* Buy-ins Control */}
-               <div className="bg-black/20 rounded-xl p-2 flex items-center justify-between border border-white/5">
+               <div className={`bg-black/20 rounded-xl p-2 flex items-center justify-between border border-white/5 ${!canEdit ? 'opacity-50' : ''}`}>
                   <button 
-                    disabled={isLocked}
+                    disabled={isLocked || !canEdit}
                     onClick={() => updatePlayer(player.id, 'buyInCount', Math.max(0, player.buyInCount - 1))}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 disabled:opacity-30"
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     -
                   </button>
@@ -321,37 +334,38 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
                      <span className="font-mono text-lg font-bold text-white">{player.buyInCount}</span>
                   </div>
                   <button 
-                    disabled={isLocked}
+                    disabled={isLocked || !canEdit}
                     onClick={() => updatePlayer(player.id, 'buyInCount', player.buyInCount + 1)}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-poker-green disabled:opacity-30"
+                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-poker-green disabled:opacity-30 disabled:cursor-not-allowed"
                   >
                     +
                   </button>
                </div>
 
                {/* Chips Input */}
-               <div className="bg-black/20 rounded-xl p-2 border border-white/5 relative">
+               <div className={`bg-black/20 rounded-xl p-2 border border-white/5 relative ${!canEdit ? 'opacity-50' : ''}`}>
                   <div className="absolute top-1 left-0 w-full text-center text-[10px] text-gray-500 uppercase font-bold pointer-events-none">Chips</div>
                   <input 
                     type="number"
                     inputMode="numeric"
-                    disabled={isLocked}
+                    disabled={isLocked || !canEdit}
                     value={player.finalChips === 0 ? '' : player.finalChips}
                     onChange={(e) => updatePlayer(player.id, 'finalChips', e.target.value)}
                     placeholder="0"
                     onFocus={(e) => e.target.select()}
-                    className="w-full h-full bg-transparent text-center font-mono text-xl font-bold text-poker-gold focus:outline-none pt-3"
+                    className="w-full h-full bg-transparent text-center font-mono text-xl font-bold text-poker-gold focus:outline-none pt-3 disabled:cursor-not-allowed"
                   />
                </div>
             </div>
           </div>
-        ))}
+          );
+        })}
         
         {players.length === 0 && (
            <div className="text-center py-10 text-gray-500 opacity-60">
               <div className="mb-2 text-4xl">🎲</div>
               <p>No players yet.</p>
-              <p className="text-xs mt-1">Click "+" to add players.</p>
+              {currentUser.isHost && <p className="text-xs mt-1">Click "+" to add players.</p>}
            </div>
         )}
       </div>
@@ -396,9 +410,9 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
               )}
           </div>
 
-          {/* Right: Add Player */}
+          {/* Right: Add Player - RESTRICTED TO HOST */}
           <div className="pointer-events-auto">
-             {!isLocked && (
+             {!isLocked && currentUser.isHost && (
                 <button 
                     onClick={() => setIsAddPlayerOpen(true)}
                     className="w-14 h-14 bg-gradient-to-tr from-poker-green to-emerald-500 text-black rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,220,130,0.4)] hover:scale-110 active:scale-95 transition-all"
