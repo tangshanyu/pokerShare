@@ -3,6 +3,7 @@ import { Player, CalculationResult } from './types';
 import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
 import { ImportModal } from './components/ImportModal';
 import { ChatRoom } from './components/ChatRoom';
+import { RoomManager } from './components/RoomManager';
 import { useStorage, useMutation, useOthers, useSelf } from './liveblocks.config';
 import { LiveObject } from '@liveblocks/client';
 
@@ -17,7 +18,7 @@ const PlusIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 );
 const TrashIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
 );
 const DocsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -30,6 +31,9 @@ const UsersIcon = () => (
 );
 const ChatIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+);
+const LockIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
 );
 
 interface AppProps {
@@ -55,6 +59,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const [activeTab, setActiveTab] = useState<'transfers' | 'profits' | 'export'>('transfers');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [logoClickCount, setLogoClickCount] = useState(0);
   const hasAutoJoined = useRef(false);
 
   // Mutations
@@ -64,6 +70,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
     
     if (newSettings.cashPerBuyIn !== undefined) s.set("cashPerBuyIn", newSettings.cashPerBuyIn);
     if (newSettings.chipPerBuyIn !== undefined) s.set("chipPerBuyIn", newSettings.chipPerBuyIn);
+    if (newSettings.isLocked !== undefined) s.set("isLocked", newSettings.isLocked);
   }, []);
 
   // Generic add player (for Host manual add or Auto-join)
@@ -223,14 +230,25 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
       setIsChatOpen(true);
   };
 
+  const handleLogoClick = () => {
+    const newCount = logoClickCount + 1;
+    setLogoClickCount(newCount);
+    if (newCount === 5) {
+        setIsManagerOpen(true);
+        setLogoClickCount(0);
+    }
+  };
+
+  const isLocked = settings.isLocked || false;
+
   return (
     <div className="min-h-screen pb-20 font-sans selection:bg-poker-green selection:text-black">
       
       {/* Header */}
       <header className="sticky top-0 z-40 glass-panel border-x-0 border-t-0 bg-opacity-40 backdrop-blur-xl">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-                <div className="bg-gradient-to-br from-poker-green to-emerald-700 p-2 rounded-xl shadow-lg shadow-poker-green/20">
+            <div className="flex items-center space-x-3 cursor-pointer select-none" onClick={handleLogoClick}>
+                <div className={`bg-gradient-to-br from-poker-green to-emerald-700 p-2 rounded-xl shadow-lg shadow-poker-green/20 ${logoClickCount > 0 ? 'animate-pulse' : ''}`}>
                     <ChipsIcon />
                 </div>
                 <div>
@@ -247,6 +265,13 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
             </div>
             
             <div className="flex items-center space-x-2 md:space-x-4">
+                {/* Locked Badge */}
+                {isLocked && (
+                    <div className="hidden md:flex items-center px-3 py-1.5 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-xs font-bold animate-pulse">
+                        <span className="mr-1"><LockIcon /></span> FINISHED
+                    </div>
+                )}
+
                 {/* Online Users with Tooltip - VISIBLE ON MOBILE NOW */}
                 <div className="flex relative group items-center px-3 py-1.5 bg-black/20 rounded-lg border border-white/5 cursor-pointer">
                     <UsersIcon />
@@ -293,7 +318,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
       <div className="container mx-auto px-4 max-w-4xl mt-8 space-y-8">
         
         {/* Settings Card */}
-        <section className={`glass-panel rounded-3xl overflow-hidden relative group transition-opacity ${!currentUser.isHost ? 'opacity-80' : ''}`}>
+        <section className={`glass-panel rounded-3xl overflow-hidden relative group transition-opacity ${!currentUser.isHost || isLocked ? 'opacity-80' : ''}`}>
            {currentUser.isHost && (
              <div className="absolute top-0 right-0 w-32 h-32 bg-poker-green/10 rounded-full blur-3xl group-hover:bg-poker-green/20 transition-all duration-700"></div>
            )}
@@ -302,7 +327,10 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
              <h2 className="text-lg font-bold text-white flex items-center">
                <span className="mr-2">🎲</span> 遊戲設定 (Settings)
              </h2>
-             {!currentUser.isHost && <span className="text-xs text-gray-500 border border-gray-700 px-2 py-1 rounded">Read Only</span>}
+             <div className="flex items-center space-x-2">
+                 {isLocked && <span className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-1 rounded font-bold">LOCKED</span>}
+                 {!currentUser.isHost && <span className="text-xs text-gray-500 border border-gray-700 px-2 py-1 rounded">Read Only</span>}
+             </div>
           </div>
           <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -312,8 +340,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                    type="number" 
                    value={settings.chipPerBuyIn}
                    onChange={(e) => updateSettings({ chipPerBuyIn: Number(e.target.value) })}
-                   disabled={!currentUser.isHost}
-                   className={`glass-input w-full rounded-xl py-4 px-5 text-white text-lg font-medium outline-none ${!currentUser.isHost ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
+                   disabled={!currentUser.isHost || isLocked}
+                   className={`glass-input w-full rounded-xl py-4 px-5 text-white text-lg font-medium outline-none ${(!currentUser.isHost || isLocked) ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
                  />
                </div>
                
@@ -329,8 +357,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                     type="number" 
                     value={settings.cashPerBuyIn}
                     onChange={(e) => updateSettings({ cashPerBuyIn: Number(e.target.value) })}
-                    disabled={!currentUser.isHost}
-                    className={`glass-input w-full rounded-xl py-4 pl-10 pr-5 text-white text-lg font-medium outline-none ${!currentUser.isHost ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
+                    disabled={!currentUser.isHost || isLocked}
+                    className={`glass-input w-full rounded-xl py-4 pl-10 pr-5 text-white text-lg font-medium outline-none ${(!currentUser.isHost || isLocked) ? 'cursor-not-allowed opacity-70 bg-black/40' : ''}`}
                    />
                  </div>
                </div>
@@ -339,12 +367,15 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
         </section>
 
         {/* Players Card */}
-        <section className="glass-panel rounded-3xl">
+        <section className={`glass-panel rounded-3xl ${isLocked ? 'border-red-500/20' : ''}`}>
            <div className="px-8 py-5 border-b border-glass-border flex justify-between items-center flex-wrap gap-3">
-             <h2 className="text-lg font-bold text-white flex items-center"><span className="mr-2">🃏</span> 玩家列表 (Players)</h2>
+             <div className="flex items-center">
+                <h2 className="text-lg font-bold text-white flex items-center"><span className="mr-2">🃏</span> 玩家列表 (Players)</h2>
+                {isLocked && <span className="ml-3 text-xs bg-red-500 text-black font-bold px-2 py-0.5 rounded">FINISHED</span>}
+             </div>
              
              {/* Only Host sees Import/Add buttons */}
-             {currentUser.isHost && (
+             {currentUser.isHost && !isLocked && (
                 <div className="flex space-x-3">
                     <button 
                         onClick={() => setIsImportModalOpen(true)}
@@ -371,9 +402,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
 
             {players.map((player, index) => {
               const isMe = player.id === currentUser.id;
-              const canEdit = currentUser.isHost || isMe;
-              // If isHost is true, they can edit name.
-              const canEditName = currentUser.isHost;
+              const canEdit = (currentUser.isHost || isMe) && !isLocked;
+              const canEditName = currentUser.isHost && !isLocked;
               
               return (
                 <div key={player.id} className={`group relative rounded-2xl p-4 transition-all duration-300 border ${isMe ? 'bg-poker-green/5 border-poker-green/30' : 'bg-black/20 border-white/5'}`}>
@@ -432,7 +462,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                             </div>
 
                             {/* Delete (Only Host) */}
-                            {currentUser.isHost && (
+                            {currentUser.isHost && !isLocked && (
                                 <div className="col-span-2 md:col-span-1 flex justify-end">
                                     <button 
                                     onClick={() => removePlayer(player.id)}
@@ -599,6 +629,14 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
         currentUser={currentUser}
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
+      />
+      
+      <RoomManager
+        isOpen={isManagerOpen}
+        onClose={() => setIsManagerOpen(false)}
+        settings={settings}
+        updateSettings={updateSettings}
+        isHost={currentUser.isHost}
       />
 
       <footer className="mt-16 text-center text-gray-500 text-sm">

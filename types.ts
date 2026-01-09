@@ -9,6 +9,7 @@ export interface Player {
 export interface GameSettings {
   chipPerBuyIn: number; // E.g., 1000 chips per buy-in
   cashPerBuyIn: number; // E.g., 500 TWD per buy-in
+  isLocked?: boolean; // New: If true, the game is finished and read-only
 }
 
 export interface Transfer {

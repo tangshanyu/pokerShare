@@ -31,6 +31,32 @@ const getUserId = () => {
   return id;
 };
 
+// Helper: Save Room to History
+const saveRoomToHistory = (roomId: string, hostName?: string) => {
+  try {
+    const key = 'poker_room_history';
+    const raw = localStorage.getItem(key);
+    let history = raw ? JSON.parse(raw) : [];
+    
+    // Remove if exists (to move to top)
+    history = history.filter((r: any) => r.roomId !== roomId);
+    
+    // Add to top
+    history.unshift({
+      roomId,
+      timestamp: Date.now(),
+      hostName: hostName || 'Unknown'
+    });
+    
+    // Keep last 10
+    if (history.length > 10) history.pop();
+    
+    localStorage.setItem(key, JSON.stringify(history));
+  } catch (e) {
+    console.error("Failed to save history", e);
+  }
+};
+
 // Component: Create Room (Host)
 const CreateRoomScreen = ({ onJoin }: { onJoin: (state: UserState, roomId: string) => void }) => {
   const [name, setName] = useState(localStorage.getItem('poker_user_name') || '');
@@ -48,6 +74,7 @@ const CreateRoomScreen = ({ onJoin }: { onJoin: (state: UserState, roomId: strin
     
     // Mark as host in local storage for this room
     localStorage.setItem(`poker_is_host_${newRoomId}`, 'true');
+    saveRoomToHistory(newRoomId, name);
 
     onJoin({
       id: userId,
@@ -123,6 +150,8 @@ const JoinRoomScreen = ({ onJoin }: { onJoin: (state: UserState) => void }) => {
     if (!name.trim()) return alert("請輸入您的暱稱 (Please enter your name)");
     localStorage.setItem('poker_user_name', name);
     
+    if (roomId) saveRoomToHistory(roomId, 'Visited');
+
     const userId = getUserId();
     
     onJoin({
@@ -233,7 +262,8 @@ const Root = () => {
         messages: new LiveList([]),
         settings: new LiveObject({
           chipPerBuyIn: 1000,
-          cashPerBuyIn: 500
+          cashPerBuyIn: 500,
+          isLocked: false
         })
       }}
     >
