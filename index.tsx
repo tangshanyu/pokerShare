@@ -58,10 +58,6 @@ const saveRoomToHistory = (roomId: string, hostName?: string) => {
   }
 };
 
-const ShieldIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-);
-
 // Helper: Generate Date String YYYYMMDD
 const getTodayString = () => {
   const d = new Date();
@@ -155,7 +151,8 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
   const handleLogoClick = () => {
     const next = clickCount + 1;
     setClickCount(next);
-    if (next >= 3) {
+    // Admin Trigger: 5 clicks
+    if (next >= 5) {
       openManager();
       setClickCount(0);
     }
@@ -163,15 +160,6 @@ const CreateRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState, 
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
-      {/* Admin Button (Top Right) */}
-      <button 
-        onClick={openManager}
-        className="absolute top-4 right-4 z-50 p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
-        title="Open Manager"
-      >
-        <ShieldIcon />
-      </button>
-
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         {/* Decorative Background */}
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-poker-green/10 to-transparent animate-spin-slow pointer-events-none"></div>
@@ -264,7 +252,8 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
   const handleLogoClick = () => {
     const next = clickCount + 1;
     setClickCount(next);
-    if (next >= 3) {
+    // Admin Trigger: 5 clicks
+    if (next >= 5) {
       openManager();
       setClickCount(0);
     }
@@ -272,15 +261,6 @@ const JoinRoomScreen = ({ onJoin, openManager }: { onJoin: (state: UserState) =>
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
-      {/* Admin Button (Top Right) */}
-      <button 
-        onClick={openManager}
-        className="absolute top-4 right-4 z-50 p-2 rounded-full bg-white/5 hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
-        title="Open Manager"
-      >
-        <ShieldIcon />
-      </button>
-
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-blue-500/10 to-transparent animate-spin-slow pointer-events-none"></div>
         

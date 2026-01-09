@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { GameSettings } from '../types';
 
 interface RoomManagerProps {
   isOpen: boolean;
   onClose: () => void;
-  // Make these optional for "Lobby Mode" usage
   settings?: GameSettings;
   updateSettings?: (newSettings: Partial<GameSettings>) => void;
   isHost?: boolean;
@@ -22,9 +21,14 @@ interface GlobalRoom {
   lastConnectionAt: string;
   createdAt: string;
   metadata: Record<string, any>;
-  defaultAccesses: string[];
-  groupsAccesses: Record<string, string[]>;
-  usersAccesses: Record<string, string[]>;
+}
+
+// Stats Interface
+interface SystemStats {
+  totalRooms: number;
+  activeToday: number; // Active in last 24h
+  createdToday: number; // ID starts with today's date
+  totalPlayersEstimate: number; // Rough estimate based on logic
 }
 
 export const RoomManager: React.FC<RoomManagerProps> = ({ 
@@ -34,12 +38,13 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   updateSettings, 
   isHost = false
 }) => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'local'>('dashboard');
   const [history, setHistory] = useState<RoomHistory[]>([]);
   const [globalRooms, setGlobalRooms] = useState<GlobalRoom[]>([]);
   const [isLoadingGlobal, setIsLoadingGlobal] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  // Determine if we are inside a game or in the lobby
+  // Determine mode
   const isLobbyMode = !settings || !updateSettings;
 
   useEffect(() => {
@@ -48,6 +53,34 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
       fetchGlobalRooms();
     }
   }, [isOpen]);
+
+  // Calculate Statistics
+  const stats: SystemStats = useMemo(() => {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    // Get YYYYMMDD for today
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const datePrefix = `${year}${month}${day}`;
+
+    let activeCount = 0;
+    let createdCount = 0;
+
+    globalRooms.forEach(room => {
+        const lastActive = new Date(room.lastConnectionAt);
+        if (lastActive > oneDayAgo) activeCount++;
+        if (room.id.startsWith(datePrefix)) createdCount++;
+    });
+
+    return {
+        totalRooms: globalRooms.length,
+        activeToday: activeCount,
+        createdToday: createdCount,
+        totalPlayersEstimate: globalRooms.length * 4 // Heuristic avg
+    };
+  }, [globalRooms]);
 
   const loadHistory = () => {
     try {
@@ -66,10 +99,9 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
     setIsLoadingGlobal(true);
     setGlobalError(null);
     try {
-      // Fetch from our Vercel Serverless Function
       const res = await fetch('/api/rooms');
       if (!res.ok) {
-         if (res.status === 404) throw new Error("API route not found. (Are you running on Vercel?)");
+         if (res.status === 404) throw new Error("API route not found.");
          const json = await res.json();
          throw new Error(json.error || "Failed to fetch");
       }
@@ -88,8 +120,8 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
 
     const newVal = !settings.isLocked;
     const confirmMsg = newVal 
-      ? "確定要鎖定房間嗎？鎖定後無法再編輯籌碼與新增玩家。" 
-      : "確定要解鎖房間嗎？";
+      ? "[ADMIN] 確定要鎖定房間嗎？這將禁止所有操作。" 
+      : "[ADMIN] 確定要解鎖房間嗎？";
       
     if (window.confirm(confirmMsg)) {
       updateSettings({ isLocked: newVal });
@@ -101,156 +133,200 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
   };
 
   const clearHistory = () => {
-    if (window.confirm("確定要清除本機的房間瀏覽紀錄嗎？(這不會刪除房間本身)")) {
+    if (window.confirm("確定要清除本機的房間瀏覽紀錄嗎？")) {
       localStorage.removeItem('poker_room_history');
       loadHistory();
     }
   };
 
-  const openLiveblocksDashboard = () => {
-    window.open('https://liveblocks.io/dashboard/rooms', '_blank');
-  };
-
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in">
-      <div className="glass-panel w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl bg-[#1a1a20] border border-poker-gold/30 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-fade-in">
+      <div className="glass-panel w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl bg-[#0a0a0f] border border-red-500/20 flex flex-col max-h-[90vh]">
         
-        {/* Header */}
-        <div className="p-5 border-b border-white/10 flex justify-between items-center bg-poker-gold/10 shrink-0">
-          <div className="flex items-center space-x-2">
-            <span className="text-2xl">🕵️‍♂️</span>
-            <h2 className="text-xl font-bold text-poker-gold">
-              {isLobbyMode ? 'Lobby Manager' : 'Room Manager'}
-            </h2>
+        {/* Header - Admin Style */}
+        <div className="p-5 border-b border-white/10 flex justify-between items-center bg-red-900/10 shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="bg-red-500/20 p-2 rounded-lg border border-red-500/30 text-red-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div>
+                <h2 className="text-xl font-bold text-white">System Admin</h2>
+                <p className="text-[10px] text-red-400 font-mono tracking-widest uppercase">Restricted Access</p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-2xl leading-none">&times;</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-2xl leading-none">&times;</button>
         </div>
 
-        <div className="p-6 space-y-8 overflow-y-auto custom-scrollbar">
+        {/* Tabs */}
+        <div className="flex border-b border-white/5 bg-black/20">
+            <button 
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'dashboard' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+                📊 Dashboard
+            </button>
+            <button 
+                onClick={() => setActiveTab('rooms')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'rooms' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+                🌍 Global Rooms
+            </button>
+            <button 
+                onClick={() => setActiveTab('local')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'local' ? 'text-poker-green border-b-2 border-poker-green bg-white/5' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+                🕒 Local History
+            </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-gradient-to-b from-[#0a0a0f] to-[#111]">
           
-          {/* Section 1: Room Control (Only show if inside a game) */}
-          {!isLobbyMode && settings && updateSettings && (
-            <div>
-              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Current Room Control</h3>
-              {isHost ? (
-                <div className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
-                  <div>
-                    <div className="text-white font-medium">Lock Room Status</div>
-                    <div className={`text-xs mt-1 ${settings.isLocked ? 'text-red-400' : 'text-green-400'}`}>
-                      {settings.isLocked ? '🔒 Locked (Read Only)' : '🔓 Open (Editable)'}
-                    </div>
+          {/* TAB: DASHBOARD */}
+          {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                          <div className="text-gray-500 text-xs uppercase font-bold mb-1">Total Rooms</div>
+                          <div className="text-2xl font-mono text-white">{isLoadingGlobal ? '...' : stats.totalRooms}</div>
+                      </div>
+                      <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                          <div className="text-poker-green text-xs uppercase font-bold mb-1">Active (24h)</div>
+                          <div className="text-2xl font-mono text-white">{isLoadingGlobal ? '...' : stats.activeToday}</div>
+                      </div>
+                      <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                          <div className="text-blue-400 text-xs uppercase font-bold mb-1">New Today</div>
+                          <div className="text-2xl font-mono text-white">{isLoadingGlobal ? '...' : stats.createdToday}</div>
+                      </div>
+                      <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                          <div className="text-purple-400 text-xs uppercase font-bold mb-1">Est. Players</div>
+                          <div className="text-2xl font-mono text-white">{isLoadingGlobal ? '...' : `~${stats.totalPlayersEstimate}`}</div>
+                      </div>
                   </div>
-                  <button 
-                    onClick={handleToggleLock}
-                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
-                      settings.isLocked 
-                        ? 'bg-white/10 text-white hover:bg-white/20' 
-                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-                    }`}
-                  >
-                    {settings.isLocked ? 'Unlock Game' : 'Finish & Lock Game'}
-                  </button>
+
+                  {/* Current Room Controls (Only if in-game) */}
+                  {!isLobbyMode && settings && updateSettings && (
+                    <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">
+                        <h3 className="text-red-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center">
+                            <span className="mr-2">⚡</span> Current Room Maintenance
+                        </h3>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="text-white font-medium">Force Lock Room</div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Status: {settings.isLocked ? <span className="text-red-400 font-bold">LOCKED</span> : <span className="text-green-400 font-bold">ACTIVE</span>}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={handleToggleLock}
+                                className={`px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wide transition-all ${
+                                settings.isLocked 
+                                    ? 'bg-white/10 text-white hover:bg-white/20' 
+                                    : 'bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-600/20'
+                                }`}
+                            >
+                                {settings.isLocked ? 'Unlock' : 'Lock Down'}
+                            </button>
+                        </div>
+                    </div>
+                  )}
+              </div>
+          )}
+
+          {/* TAB: GLOBAL ROOMS */}
+          {activeTab === 'rooms' && (
+            <div>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Server Room List</h3>
+                    <button onClick={fetchGlobalRooms} className="text-xs bg-white/5 hover:bg-white/10 px-2 py-1 rounded text-white transition-colors">Refresh Data</button>
                 </div>
-              ) : (
-                <p className="text-gray-500 text-sm italic">Only the Host can lock/unlock this room.</p>
-              )}
+
+                {isLoadingGlobal ? (
+                <div className="py-12 flex justify-center text-gray-500">
+                    <div className="animate-spin h-6 w-6 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                </div>
+                ) : globalError ? (
+                <div className="bg-red-500/10 p-4 rounded-xl border border-red-500/20 text-red-300 text-xs">
+                    Error: {globalError}
+                </div>
+                ) : (
+                <div className="bg-black/20 rounded-xl border border-white/5 overflow-hidden max-h-[400px] overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left text-xs">
+                        <thead className="bg-white/5 text-gray-400 font-medium">
+                            <tr>
+                                <th className="p-3">Room ID</th>
+                                <th className="p-3">Created At</th>
+                                <th className="p-3">Last Active</th>
+                                <th className="p-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {globalRooms.map(room => (
+                                <tr key={room.id} className="hover:bg-white/5 transition-colors group">
+                                    <td className="p-3 font-mono text-blue-300">{room.id}</td>
+                                    <td className="p-3 text-gray-500">{new Date(room.createdAt).toLocaleDateString()}</td>
+                                    <td className="p-3 text-gray-400">{new Date(room.lastConnectionAt).toLocaleString()}</td>
+                                    <td className="p-3 text-right">
+                                        <button 
+                                            onClick={() => switchRoom(room.id)}
+                                            className="text-gray-500 hover:text-white group-hover:underline"
+                                        >
+                                            Inspect
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                )}
             </div>
           )}
 
-          {/* Section 2: Global Management (Server Side) */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">All Active Rooms (Server)</h3>
-               <button onClick={fetchGlobalRooms} className="text-xs text-poker-green hover:underline">Refresh</button>
-            </div>
-
-            {isLoadingGlobal ? (
-               <div className="py-8 flex justify-center text-poker-green">
-                   <div className="animate-spin h-5 w-5 border-2 border-poker-green border-t-transparent rounded-full"></div>
-               </div>
-            ) : globalError ? (
-               <div className="bg-red-500/10 p-4 rounded-xl border border-red-500/20">
-                   <p className="text-xs text-red-300 mb-2">無法讀取伺服器資料。請確認您已在 Vercel 設定環境變數 <code>LIVEBLOCKS_SECRET_KEY</code>。</p>
-                   <p className="text-[10px] text-red-400 font-mono">{globalError}</p>
-                   <button 
-                     onClick={openLiveblocksDashboard}
-                     className="mt-3 text-xs text-white bg-red-500/20 px-3 py-1.5 rounded hover:bg-red-500/30 transition-colors"
-                   >
-                     Fallback: Open Dashboard
-                   </button>
-               </div>
-            ) : (
-               <div className="bg-black/20 rounded-xl border border-white/5 overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
-                   {globalRooms.length === 0 ? (
-                       <div className="p-4 text-center text-gray-500 text-sm">No active rooms found.</div>
-                   ) : (
-                       globalRooms.map(room => (
-                           <div 
-                               key={room.id}
-                               onClick={() => switchRoom(room.id)}
-                               className={`p-3 border-b border-white/5 last:border-0 hover:bg-white/5 cursor-pointer flex justify-between items-center transition-colors ${window.location.search.includes(room.id) ? 'bg-poker-green/5' : ''}`}
-                           >
-                               <div>
-                                   <div className="text-sm font-mono text-blue-300">{room.id}</div>
-                                   <div className="text-[10px] text-gray-500">
-                                       Last active: {new Date(room.lastConnectionAt).toLocaleString()}
-                                   </div>
-                               </div>
-                               <div className="text-xs text-gray-400">➜</div>
-                           </div>
-                       ))
-                   )}
-               </div>
-            )}
-          </div>
-
-          {/* Section 3: Room History (Local) */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Local History</h3>
-               {history.length > 0 && (
-                 <button onClick={clearHistory} className="text-xs text-red-400 hover:text-red-300 underline">
-                   Clear History
-                 </button>
-               )}
-            </div>
-            
-            <div className="space-y-2 pr-1">
-              {history.length === 0 && (
-                <div className="text-center py-6 text-gray-500 text-sm bg-white/5 rounded-xl border border-dashed border-white/10">
-                  No history found on this device.
+          {/* TAB: LOCAL HISTORY */}
+          {activeTab === 'local' && (
+            <div>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Device History</h3>
+                    {history.length > 0 && (
+                        <button onClick={clearHistory} className="text-xs text-red-400 hover:text-red-300">Clear All</button>
+                    )}
                 </div>
-              )}
-              {history.map((room) => {
-                const isCurrent = window.location.search.includes(room.roomId);
-                return (
-                  <div 
-                    key={room.roomId}
-                    onClick={() => !isCurrent && switchRoom(room.roomId)}
-                    className={`p-3 rounded-lg flex justify-between items-center border transition-all ${
-                      isCurrent 
-                        ? 'bg-poker-green/10 border-poker-green/30 cursor-default' 
-                        : 'bg-white/5 border-transparent hover:bg-white/10 cursor-pointer'
-                    }`}
-                  >
-                    <div>
-                      <div className={`font-mono text-sm ${isCurrent ? 'text-poker-green' : 'text-gray-300'}`}>
-                        {room.roomId} {isCurrent && '(Current)'}
-                      </div>
-                      <div className="text-[10px] text-gray-500">
-                        {new Date(room.timestamp).toLocaleString()}
-                      </div>
+                
+                <div className="space-y-2">
+                {history.length === 0 && (
+                    <div className="text-center py-8 text-gray-600 text-sm border border-dashed border-white/5 rounded-xl">
+                        No history on this device.
                     </div>
-                    <div className="text-xs text-gray-500">
-                      Host: {room.hostName || 'Unknown'}
+                )}
+                {history.map((room) => {
+                    const isCurrent = window.location.search.includes(room.roomId);
+                    return (
+                    <div 
+                        key={room.roomId}
+                        onClick={() => !isCurrent && switchRoom(room.roomId)}
+                        className={`p-3 rounded-lg flex justify-between items-center border transition-all ${
+                        isCurrent 
+                            ? 'bg-poker-green/5 border-poker-green/30 cursor-default' 
+                            : 'bg-white/5 border-transparent hover:bg-white/10 cursor-pointer'
+                        }`}
+                    >
+                        <div>
+                        <div className={`font-mono text-sm ${isCurrent ? 'text-poker-green' : 'text-gray-300'}`}>
+                            {room.roomId}
+                        </div>
+                        <div className="text-[10px] text-gray-500">
+                            {new Date(room.timestamp).toLocaleString()} • Host: {room.hostName}
+                        </div>
+                        </div>
                     </div>
-                  </div>
-                );
-              })}
+                    );
+                })}
+                </div>
             </div>
-          </div>
+          )}
 
         </div>
       </div>

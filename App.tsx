@@ -35,9 +35,6 @@ const ChatIcon = () => (
 const LockIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
 );
-const ShieldIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-);
 
 interface AppProps {
   currentUser: {
@@ -236,8 +233,8 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const handleLogoClick = () => {
     const newCount = logoClickCount + 1;
     setLogoClickCount(newCount);
-    // Easier trigger: 3 clicks instead of 5
-    if (newCount >= 3) {
+    // Secret Admin Trigger: 5 clicks
+    if (newCount >= 5) {
         setIsManagerOpen(true);
         setLogoClickCount(0);
     }
@@ -269,16 +266,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
             </div>
             
             <div className="flex items-center space-x-2 md:space-x-4">
-                {/* Admin/Manager Button (Host Only) - Explicit button for better UX */}
-                {currentUser.isHost && (
-                    <button
-                        onClick={() => setIsManagerOpen(true)}
-                        className="flex items-center justify-center w-9 h-9 rounded-lg border border-white/5 bg-black/20 text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-                        title="Room Manager"
-                    >
-                        <ShieldIcon />
-                    </button>
-                )}
+                {/* Admin button removed. Access via 5 logo clicks only. */}
 
                 {/* Locked Badge */}
                 {isLocked && (
