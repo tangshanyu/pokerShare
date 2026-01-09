@@ -76,14 +76,16 @@ const getTodayString = () => {
 interface UserSelectorProps {
   name: string;
   setName: (n: string) => void;
-  onSaveName: () => void; // Parent triggers this to save to DB
 }
 
-const UserSelector = ({ name, setName, registerSaveRef }: { name: string, setName: (n: string) => void, registerSaveRef: (fn: () => void) => void }) => {
+const UserSelector = ({ name, setName }: UserSelectorProps) => {
   // useStorage returns a plain array (snapshot)
   const cloudDirectory = useStorage((root) => root.playerDirectory);
-  const [isManualInput, setIsManualInput] = useState(false);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  
+  // Default to selection mode (False = Dropdown, True = Input)
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [newNameInput, setNewNameInput] = useState('');
+  const [hasValidatedInitial, setHasValidatedInitial] = useState(false);
 
   // Mutation to add name to cloud
   const addToCloud = useMutation(({ storage }, newName: string) => {
@@ -97,87 +99,112 @@ const UserSelector = ({ name, setName, registerSaveRef }: { name: string, setNam
     }
   }, []);
 
-  // Register the save function to parent
-  useEffect(() => {
-    registerSaveRef(() => {
-      if (name && name.trim()) {
-        addToCloud(name.trim());
-      }
-    });
-  }, [name, addToCloud, registerSaveRef]);
-
-  // Initial Logic: If current local name exists in cloud, set mode to Select, else Manual
-  useEffect(() => {
-    if (!hasInitialized && cloudDirectory !== undefined) {
-      const list = Array.isArray(cloudDirectory) ? cloudDirectory : [];
-      // If we have a name in local storage (passed via props) and it's NOT in the list, default to manual.
-      // If list is empty, default to manual.
-      if (list.length === 0) {
-        setIsManualInput(true);
-      } else if (name && !list.includes(name)) {
-        setIsManualInput(true);
-      } else {
-        setIsManualInput(false);
-      }
-      setHasInitialized(true);
-    }
-  }, [cloudDirectory, name, hasInitialized]);
-
   const directoryList = Array.isArray(cloudDirectory) ? [...cloudDirectory].sort() : [];
 
-  if (!hasInitialized) {
-     return <div className="h-12 w-full bg-white/5 rounded-xl animate-pulse"></div>;
+  // Initial Validation: Ensure the name in localStorage actually exists in DB
+  useEffect(() => {
+    if (!hasValidatedInitial && cloudDirectory !== undefined) {
+      if (name) {
+        // If current name is NOT in the list, clear it to force selection
+        if (directoryList.length > 0 && !directoryList.includes(name)) {
+           setName(''); 
+        }
+      }
+      setHasValidatedInitial(true);
+    }
+  }, [cloudDirectory, name, setName, hasValidatedInitial, directoryList]);
+
+  const handleConfirmNewUser = () => {
+      const trimmed = newNameInput.trim();
+      if (!trimmed) return;
+
+      // 1. Write to DB immediately
+      addToCloud(trimmed);
+      
+      // 2. Select it locally
+      setName(trimmed);
+      
+      // 3. Switch back to dropdown mode
+      setIsCreatingNew(false);
+      setNewNameInput('');
+  };
+
+  if (!hasValidatedInitial) {
+     return <div className="h-16 w-full bg-white/5 rounded-xl animate-pulse"></div>;
   }
 
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center mb-1">
-        <label className={`block text-xs font-bold uppercase transition-colors ${isManualInput ? 'text-blue-400' : 'text-poker-green'}`}>
-          {isManualInput ? '輸入新名稱 (New User)' : '選擇玩家 (Select Player)'}
+        <label className={`block text-xs font-bold uppercase transition-colors ${isCreatingNew ? 'text-blue-400' : 'text-poker-green'}`}>
+          {isCreatingNew ? '建立新檔案 (Create New)' : '選擇玩家 (Select Player)'}
         </label>
         
-        <button 
-          onClick={() => {
-             setIsManualInput(!isManualInput);
-             setName(''); // Clear name on switch for better UX
-          }}
-          className="text-[10px] text-gray-400 hover:text-white underline decoration-dotted underline-offset-2 transition-colors"
-        >
-          {isManualInput ? '使用現有玩家 (Select Existing)' : '我是新玩家 (New User)'}
-        </button>
+        {!isCreatingNew && (
+            <button 
+            onClick={() => {
+                setIsCreatingNew(true);
+                setNewNameInput('');
+            }}
+            className="text-[10px] text-gray-400 hover:text-white underline decoration-dotted underline-offset-2 transition-colors flex items-center"
+            >
+             <span className="mr-1">+</span> 我是新玩家 (New User)
+            </button>
+        )}
       </div>
 
-      {isManualInput ? (
-        <div className="relative animate-fade-in">
+      {isCreatingNew ? (
+        <div className="animate-fade-in bg-black/20 p-3 rounded-xl border border-blue-500/30">
            <input 
               type="text" 
-              value={name}
-              onChange={e => setName(e.target.value)}
+              value={newNameInput}
+              onChange={e => setNewNameInput(e.target.value)}
               placeholder="輸入您的名字..."
-              className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-blue-400 transition-colors"
+              className="glass-input w-full rounded-lg py-2 px-3 text-white outline-none focus:border-blue-400 transition-colors mb-3"
               autoFocus
               autoComplete="off"
             />
-            <div className="absolute right-3 top-3 text-xs text-blue-400 font-bold px-2 py-0.5 bg-blue-500/10 rounded">NEW</div>
+            <div className="flex space-x-2">
+                <button 
+                    onClick={() => setIsCreatingNew(false)}
+                    className="flex-1 py-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                    取消 (Cancel)
+                </button>
+                <button 
+                    onClick={handleConfirmNewUser}
+                    disabled={!newNameInput.trim()}
+                    className={`flex-1 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg ${!newNameInput.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                    新增並選取 (Add & Select)
+                </button>
+            </div>
         </div>
       ) : (
         <div className="relative animate-fade-in">
            <select
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-poker-green transition-colors appearance-none cursor-pointer"
+              className={`glass-input w-full rounded-xl py-3 px-4 outline-none focus:border-poker-green transition-colors appearance-none cursor-pointer ${!name ? 'text-gray-400' : 'text-white font-bold'}`}
            >
-              <option value="" disabled>-- 請選擇 --</option>
+              <option value="" disabled>-- 請選擇您的名字 --</option>
               {directoryList.map((p) => (
                 <option key={p} value={p} className="bg-[#1a1a20] text-gray-200">
                   {p}
                 </option>
               ))}
            </select>
+           
            {/* Custom Arrow */}
            <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
            </div>
+           
+           {directoryList.length === 0 && (
+               <div className="mt-2 text-[10px] text-orange-400">
+                   ⚠️ 名冊是空的，請點擊上方「我是新玩家」來建立檔案。
+               </div>
+           )}
         </div>
       )}
     </div>
@@ -192,9 +219,6 @@ const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, ro
   const [clickCount, setClickCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   
-  // Ref to hold the save function from the child component
-  const saveNameRef = React.useRef<() => void>(() => {});
-
   const generateSequentialRoomId = async () => {
     const datePrefix = getTodayString();
     try {
@@ -228,18 +252,16 @@ const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, ro
   };
 
   const handleCreate = async () => {
-    if (!name.trim()) return alert("請輸入或選擇您的暱稱 (Please select or enter your name)");
+    // Validation: Name must be selected from the UserSelector
+    if (!name.trim()) return alert("請先選擇一位玩家 (Please select a player)");
     
     setIsGenerating(true);
 
     try {
-      // 1. Save Name to Global DB (if new)
-      saveNameRef.current();
-
-      // 2. Local Storage Preference
+      // 1. Local Storage Preference
       localStorage.setItem('poker_user_name', name);
 
-      // 3. Generate ID
+      // 2. Generate ID
       const newRoomId = await generateSequentialRoomId();
       const userId = getUserId();
       
@@ -283,7 +305,6 @@ const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, ro
             <UserSelector 
               name={name} 
               setName={setName} 
-              registerSaveRef={(fn) => saveNameRef.current = fn}
             />
 
             <div className="grid grid-cols-2 gap-4">
@@ -310,7 +331,7 @@ const CreateRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState, ro
             <button 
               onClick={handleCreate}
               disabled={isGenerating || !name.trim()}
-              className={`w-full bg-gradient-to-r from-poker-green to-emerald-600 hover:from-emerald-400 hover:to-poker-green text-black font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(0,220,130,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center ${isGenerating || !name.trim() ? 'opacity-80 cursor-wait' : ''}`}
+              className={`w-full bg-gradient-to-r from-poker-green to-emerald-600 hover:from-emerald-400 hover:to-poker-green text-black font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(0,220,130,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all mt-4 flex justify-center items-center ${isGenerating || !name.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {isGenerating ? (
                 <>
@@ -337,16 +358,10 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
   const isPreviouslyHost = localStorage.getItem(`poker_is_host_${roomId}`) === 'true';
   const [clickCount, setClickCount] = useState(0);
 
-  // Ref to hold the save function from the child component
-  const saveNameRef = React.useRef<() => void>(() => {});
-
   const handleJoin = () => {
-    if (!name.trim()) return alert("請輸入或選擇您的暱稱 (Please select or enter your name)");
+    if (!name.trim()) return alert("請先選擇一位玩家 (Please select a player)");
     
-    // 1. Save Name to Global DB (if new)
-    saveNameRef.current();
-
-    // 2. Local Logic
+    // 1. Local Logic
     localStorage.setItem('poker_user_name', name);
     if (roomId) saveRoomToHistory(roomId, 'Visited');
 
@@ -383,7 +398,6 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
             <UserSelector 
               name={name} 
               setName={setName} 
-              registerSaveRef={(fn) => saveNameRef.current = fn}
             />
 
             <button 
