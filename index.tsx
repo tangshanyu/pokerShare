@@ -24,7 +24,7 @@ interface UserState {
   id: string;
   name: string;
   isHost: boolean;
-  initialSettings?: { chip: number; cash: number };
+  initialSettings?: { chip: number; cash: number; gameTitle?: string };
 }
 
 // Helper: Generate or retrieve a persistent User ID
@@ -63,6 +63,13 @@ const saveRoomToHistory = (roomId: string, hostName?: string) => {
   }
 };
 
+const getLocalHistory = () => {
+    try {
+        const raw = localStorage.getItem('poker_room_history');
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
 // Helper: Generate Date String YYYYMMDD
 const getTodayString = () => {
   const d = new Date();
@@ -71,6 +78,11 @@ const getTodayString = () => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}${month}${day}`;
 };
+
+const getDefaultGameTitle = () => {
+    const d = new Date();
+    return `${d.getMonth() + 1}/${d.getDate()} Poker Night`;
+}
 
 // --- User Selector Component (Connected to Global DB) ---
 
@@ -232,20 +244,129 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
   );
 };
 
-// Component: Create Room Form (Inner)
+// Component: Lobby Screen (The New Home)
+const LobbyScreen = ({ 
+    onCreateClick, 
+    onReportsClick, 
+    openManager 
+}: { 
+    onCreateClick: () => void, 
+    onReportsClick: () => void,
+    openManager: () => void
+}) => {
+    const [history, setHistory] = useState<any[]>([]);
+    const [selectedHistory, setSelectedHistory] = useState("");
+
+    useEffect(() => {
+        setHistory(getLocalHistory());
+    }, []);
+
+    const handleHistoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const roomId = e.target.value;
+        if (roomId) {
+            window.location.href = `?room=${roomId}`;
+        }
+    };
+
+    return (
+        <div className="flex flex-col items-center w-full max-w-4xl mx-auto px-4">
+             {/* Logo Section */}
+             <div onClick={openManager} className="mb-10 text-center cursor-pointer select-none">
+                 <h1 className="text-5xl md:text-6xl font-bold tracking-tight mb-2">
+                     Poker<span className="text-poker-green">Pro</span>
+                 </h1>
+                 <p className="text-gray-400 text-sm md:text-base tracking-widest uppercase opacity-70">
+                     Professional Settlement Tool
+                 </p>
+             </div>
+
+             {/* Split Action Cards */}
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mb-10">
+                 
+                 {/* Left: Create Game */}
+                 <button 
+                    onClick={onCreateClick}
+                    className="group relative h-48 md:h-64 glass-panel rounded-3xl p-8 flex flex-col justify-between overflow-hidden hover:border-poker-green/50 transition-all duration-300 hover:scale-[1.02]"
+                 >
+                     <div className="absolute inset-0 bg-gradient-to-br from-poker-green/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                     <div className="relative z-10 text-left">
+                         <div className="w-12 h-12 rounded-full bg-poker-green text-black flex items-center justify-center mb-4 text-2xl font-bold shadow-lg shadow-poker-green/20">
+                             +
+                         </div>
+                         <h2 className="text-3xl font-bold text-white mb-2">開新牌局</h2>
+                         <p className="text-gray-400 text-sm">Create New Game</p>
+                     </div>
+                     <div className="relative z-10 self-end">
+                         <span className="text-poker-green text-sm font-bold uppercase tracking-wider flex items-center group-hover:translate-x-2 transition-transform">
+                             Get Started <span className="ml-2">→</span>
+                         </span>
+                     </div>
+                 </button>
+
+                 {/* Right: View Records */}
+                 <button 
+                    onClick={onReportsClick}
+                    className="group relative h-48 md:h-64 glass-panel rounded-3xl p-8 flex flex-col justify-between overflow-hidden hover:border-poker-gold/50 transition-all duration-300 hover:scale-[1.02]"
+                 >
+                     <div className="absolute inset-0 bg-gradient-to-br from-poker-gold/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                     <div className="relative z-10 text-left">
+                         <div className="w-12 h-12 rounded-full bg-poker-gold text-black flex items-center justify-center mb-4 text-2xl font-bold shadow-lg shadow-poker-gold/20">
+                             📊
+                         </div>
+                         <h2 className="text-3xl font-bold text-white mb-2">查看戰績</h2>
+                         <p className="text-gray-400 text-sm">View Analytics</p>
+                     </div>
+                     <div className="relative z-10 self-end">
+                         <span className="text-poker-gold text-sm font-bold uppercase tracking-wider flex items-center group-hover:translate-x-2 transition-transform">
+                             History <span className="ml-2">→</span>
+                         </span>
+                     </div>
+                 </button>
+             </div>
+
+             {/* Bottom: History Dropdown */}
+             <div className="w-full max-w-md">
+                 <div className="relative">
+                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                        🕒
+                    </div>
+                    <select
+                        value={selectedHistory}
+                        onChange={handleHistoryChange}
+                        className="w-full bg-black/30 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-gray-300 focus:outline-none focus:border-white/30 appearance-none cursor-pointer hover:bg-black/40 transition-colors"
+                    >
+                        <option value="" disabled>快速進入歷史房間 (Recent Rooms)...</option>
+                        {history.length === 0 ? (
+                            <option value="" disabled>無歷史紀錄 (No History)</option>
+                        ) : (
+                            history.map(r => (
+                                <option key={r.roomId} value={r.roomId}>
+                                    {r.roomId} - {new Date(r.timestamp).toLocaleDateString()} ({r.hostName})
+                                </option>
+                            ))
+                        )}
+                    </select>
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none text-xs">
+                        ▼
+                    </div>
+                 </div>
+             </div>
+        </div>
+    );
+}
+
+// Component: Create Room Form (Modified with Back button and Game Title)
 const CreateRoomForm = ({ 
     onJoin, 
-    openManager, 
-    onOpenReports 
+    onBack 
 }: { 
     onJoin: (state: UserState, roomId: string) => void, 
-    openManager: () => void,
-    onOpenReports: () => void 
+    onBack: () => void
 }) => {
   const [name, setName] = useState(localStorage.getItem('poker_user_name') || '');
+  const [gameTitle, setGameTitle] = useState(getDefaultGameTitle());
   const [chipRatio, setChipRatio] = useState(1000);
   const [cashRatio, setCashRatio] = useState(500);
-  const [clickCount, setClickCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   
   const generateSequentialRoomId = async () => {
@@ -301,7 +422,11 @@ const CreateRoomForm = ({
         id: userId,
         name: name,
         isHost: true,
-        initialSettings: { chip: chipRatio, cash: cashRatio }
+        initialSettings: { 
+            chip: chipRatio, 
+            cash: cashRatio,
+            gameTitle: gameTitle.trim() || getDefaultGameTitle()
+        }
       }, newRoomId);
     } catch (e) {
       alert("建立房間失敗，請稍後再試");
@@ -309,32 +434,32 @@ const CreateRoomForm = ({
     }
   };
 
-  const handleLogoClick = () => {
-    const next = clickCount + 1;
-    setClickCount(next);
-    if (next >= 5) {
-      openManager();
-      setClickCount(0);
-    }
-  };
-
   return (
-      <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
-        {/* Decorative Background */}
-        <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-poker-green/10 to-transparent animate-spin-slow pointer-events-none"></div>
-        
-        <div className="relative z-10">
-          <div onClick={handleLogoClick} className="cursor-pointer select-none">
-             <h1 className="text-4xl font-bold mb-2 tracking-tight text-center">Poker<span className="text-poker-green">Pro</span></h1>
-             <p className="text-gray-400 mb-8 text-center text-sm">建立新牌局 (Create New Game)</p>
+      <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden animate-fade-in-up">
+        {/* Back Button */}
+        <button onClick={onBack} className="absolute top-6 left-6 text-gray-500 hover:text-white transition-colors">
+            ← Back
+        </button>
+
+        <div className="relative z-10 pt-6">
+          <div className="text-center mb-8">
+             <h1 className="text-3xl font-bold mb-1 tracking-tight">建立新牌局</h1>
+             <p className="text-gray-400 text-sm">Configure your game</p>
           </div>
 
           <div className="space-y-6">
-            {/* User Selector with DB Sync */}
-            <UserSelector 
-              name={name} 
-              setName={setName} 
-            />
+            
+            {/* Game Title Input */}
+            <div>
+                 <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Game Title (Optional)</label>
+                 <input 
+                    type="text" 
+                    value={gameTitle}
+                    onChange={e => setGameTitle(e.target.value)}
+                    placeholder="e.g. Friday Night Poker"
+                    className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-poker-green"
+                 />
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
                <div>
@@ -357,6 +482,14 @@ const CreateRoomForm = ({
                </div>
             </div>
 
+            <hr className="border-white/5" />
+
+            {/* User Selector with DB Sync */}
+            <UserSelector 
+              name={name} 
+              setName={setName} 
+            />
+
             <button 
               onClick={handleCreate}
               disabled={isGenerating || !name.trim()}
@@ -371,20 +504,9 @@ const CreateRoomForm = ({
                   產生房間 ID...
                 </>
               ) : (
-                '🚀 建立房間 (Create)'
+                '🚀 開始 (Start)'
               )}
             </button>
-            
-            {/* View Reports Button */}
-            <div className="text-center pt-2">
-                <button 
-                   onClick={onOpenReports}
-                   className="text-xs text-gray-400 hover:text-poker-gold transition-colors flex items-center justify-center mx-auto"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                    查看歷史報表 (View Reports)
-                </button>
-            </div>
           </div>
         </div>
       </div>
@@ -479,15 +601,26 @@ const Loading = ({ message = "Loading..." }: { message?: string }) => (
 
 // --- Wrapper Components to Provide Global DB Context ---
 
-const CreateRoomScreen = (props: any) => (
+const MainMenuWrapper = (props: any) => (
   <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
      <RoomProvider 
         id={GLOBAL_DB_ROOM_ID} 
         initialPresence={{}} 
         initialStorage={{ playerDirectory: new LiveList([]) }}
       >
-        <ClientSideSuspense fallback={<Loading message="Global DB Sync..." />}>
-           <CreateRoomForm {...props} />
+        <ClientSideSuspense fallback={<Loading message="Init Lobby..." />}>
+           {props.view === 'create' ? (
+                <CreateRoomForm 
+                    onJoin={props.onJoin} 
+                    onBack={props.onBack}
+                />
+           ) : (
+               <LobbyScreen 
+                    onCreateClick={() => props.setView('create')}
+                    onReportsClick={props.onOpenReports}
+                    openManager={props.openManager}
+               />
+           )}
         </ClientSideSuspense>
       </RoomProvider>
   </div>
@@ -537,20 +670,25 @@ const Root = () => {
   const [userState, setUserState] = useState<UserState | null>(null);
   const [roomId, setRoomId] = useState<string | null>(new URLSearchParams(window.location.search).get("room"));
   const [isLobbyManagerOpen, setIsLobbyManagerOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<'home' | 'reports'>('home');
+  
+  // Navigation State for Home
+  const [homeView, setHomeView] = useState<'lobby' | 'create' | 'reports'>('lobby');
 
   if (!hasApiKey) return <MissingKeyScreen />;
 
   // 0. Reports View
-  if (currentView === 'reports') {
-      return <ReportsPage onBack={() => setCurrentView('home')} />;
+  if (homeView === 'reports') {
+      return <ReportsPage onBack={() => setHomeView('lobby')} />;
   }
 
-  // 1. If no room ID in URL, show Create Screen (Home)
+  // 1. If no room ID in URL, show Main Menu (Lobby or Create)
   if (!roomId) {
     return (
       <>
-        <CreateRoomScreen 
+        <MainMenuWrapper 
+          view={homeView}
+          setView={setHomeView}
+          onBack={() => setHomeView('lobby')}
           onJoin={(user: UserState, newRoomId: string) => {
             setRoomId(newRoomId);
             setUserState(user);
@@ -558,7 +696,7 @@ const Root = () => {
             window.history.pushState({}, '', `?room=${newRoomId}`);
           }}
           openManager={() => setIsLobbyManagerOpen(true)}
-          onOpenReports={() => setCurrentView('reports')}
+          onOpenReports={() => setHomeView('reports')}
         />
         <RoomManager 
           isOpen={isLobbyManagerOpen}
@@ -595,6 +733,7 @@ const Root = () => {
         players: new LiveList([]),
         messages: new LiveList([]),
         settings: new LiveObject({
+          gameTitle: userState.initialSettings?.gameTitle, // Pass Title
           chipPerBuyIn: userState.initialSettings?.chip || 1000,
           cashPerBuyIn: userState.initialSettings?.cash || 500,
           isLocked: false,

@@ -213,14 +213,26 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
       {/* Top Bar - Tools & Settings */}
       <div className="px-4 pt-6 pb-2 flex justify-between items-center z-10">
         <div>
-           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-             Poker<span className="text-poker-green">Pro</span>
-           </h1>
-           <div className="flex items-center space-x-2 text-[10px] text-gray-400">
-              <span className="bg-white/5 px-2 py-0.5 rounded border border-white/5">Room: {new URLSearchParams(window.location.search).get("room")}</span>
+           {settings.gameTitle ? (
+               <div className="flex flex-col">
+                   <h1 className="text-xl font-bold text-white truncate max-w-[200px]">
+                     {settings.gameTitle}
+                   </h1>
+                   <div className="text-[10px] text-gray-400 font-mono tracking-wider">
+                     Poker<span className="text-poker-green">Pro</span>
+                   </div>
+               </div>
+           ) : (
+               <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
+                 Poker<span className="text-poker-green">Pro</span>
+               </h1>
+           )}
+           
+           <div className="flex items-center space-x-2 text-[10px] text-gray-400 mt-1">
+              <span className="bg-white/5 px-2 py-0.5 rounded border border-white/5 font-mono">#{new URLSearchParams(window.location.search).get("room")}</span>
               <span className="flex items-center text-green-400">
                  <span className={`w-1.5 h-1.5 rounded-full mr-1 ${status === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
-                 {others.length + 1} Online
+                 {others.length + 1}
               </span>
            </div>
         </div>
