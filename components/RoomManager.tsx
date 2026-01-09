@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { GameSettings, GameLog } from '../types';
 import { getGameLogs, clearGameLogs, getPendingUploads, clearPendingUploads } from '../utils/storage';
-import { RoomProvider, useMutation, useStorage } from '../liveblocks.config';
+import { RoomProvider, useMutation, useStorage, useStatus } from '../liveblocks.config';
 import { LiveList } from '@liveblocks/client';
 import { ClientSideSuspense } from "@liveblocks/react";
 
@@ -21,6 +21,7 @@ const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
 const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
   const globalGameLogs = useStorage((root) => root.gameLogs);
   const playerDirectory = useStorage((root) => root.playerDirectory);
+  const status = useStatus();
   const [localStatus, setLocalStatus] = useState("Syncing...");
   
   // Define Mutation to push pending logs
@@ -58,18 +59,25 @@ const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
 
   // Sync Effect
   useEffect(() => {
-    if (globalGameLogs === undefined) return; // Wait for connection
+    // CRITICAL: Ensure storage is fully loaded and connected before triggering mutations
+    if (status !== 'connected') return;
+    if (globalGameLogs === undefined) return;
 
     const pending = getPendingUploads();
     if (pending.length > 0) {
         setLocalStatus(`Uploading ${pending.length} new records...`);
-        uploadLogs(pending);
-        clearPendingUploads();
-        setLocalStatus("Sync Complete.");
+        try {
+            uploadLogs(pending);
+            clearPendingUploads();
+            setLocalStatus("Sync Complete.");
+        } catch (e) {
+            console.error("Upload failed", e);
+            setLocalStatus("Sync Failed (Retrying...)");
+        }
     } else {
         setLocalStatus("Up to date.");
     }
-  }, [globalGameLogs, uploadLogs]);
+  }, [globalGameLogs, uploadLogs, status]);
 
   // Calculate Player Stats from GLOBAL Data
   const playerStats = useMemo(() => {

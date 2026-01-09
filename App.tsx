@@ -106,9 +106,13 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
     if (index !== undefined && index !== -1 && playersList) {
       const p = playersList.get(index);
       
-      // Strict validation for chips
+      // Strict validation for chips to ensure Calculation always gets numbers
       if (field === 'finalChips') {
-          value = Math.max(0, Number(value) || 0);
+          // Allow empty string for better typing experience, but store as 0 or number
+          // If value is string and empty, we might want to store 0, but UI handles string input.
+          // Let's store number in DB.
+          const num = Number(value);
+          value = isNaN(num) ? 0 : Math.max(0, num);
       }
       
       playersList.set(index, { ...p, [field]: value });
@@ -192,6 +196,11 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
       }
   };
 
+  const handleGoHome = () => {
+      // Clear all query params to go back to lobby
+      window.location.href = window.location.origin;
+  };
+
   const existingPlayerNames = players ? players.map(p => p.name) : [];
 
   // Determine modal visibility: Global flag AND not locally dismissed
@@ -213,7 +222,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
       {/* Top Bar - Tools & Settings */}
       <div className="px-4 pt-6 pb-2 flex justify-between items-center z-10">
         <div 
-          onClick={() => window.location.href = window.location.origin} 
+          onClick={handleGoHome} 
           className="cursor-pointer hover:opacity-80 transition-opacity"
           title="Return to Home"
         >
@@ -282,19 +291,32 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
         {/* Players List */}
         {players.map((player) => {
           // Permissions Logic
+          // Host can edit ANYONE. Regular user can ONLY edit themselves.
           const isMe = player.name === currentUser.name;
           const canEdit = currentUser.isHost || isMe;
           const canDelete = currentUser.isHost || isMe;
-
+          
           return (
-          <div key={player.id} className="glass-panel rounded-2xl p-4 transition-all hover:border-white/20">
+          <div key={player.id} className={`glass-panel rounded-2xl p-4 transition-all hover:border-white/20 relative ${!canEdit ? 'opacity-80' : ''}`}>
+            
+            {/* Identity Badges */}
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border border-white/10 shadow-inner mr-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border border-white/10 shadow-inner mr-3 relative">
                   <span className="font-bold text-lg text-gray-300">{player.name.charAt(0)}</span>
+                  {/* Host Badge */}
+                  {/* Note: We don't track who is host in the Player object, but we know who WE are. 
+                      Since we can't easily know if *another* player is host without storing it, 
+                      we just mark ourselves if we are host. */}
+                  {currentUser.isHost && isMe && (
+                      <div className="absolute -top-1 -right-1 bg-poker-gold text-black text-[8px] font-bold px-1 rounded-full border border-black" title="Host">H</div>
+                  )}
                 </div>
                 <div>
-                   <div className="font-bold text-lg">{player.name}</div>
+                   <div className="font-bold text-lg flex items-center">
+                       {player.name}
+                       {isMe && <span className="ml-2 text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">(You)</span>}
+                   </div>
                    {calculation && (
                       <div className={`text-xs font-mono font-bold ${
                         (player.netAmount || 0) >= 0 ? 'text-poker-green' : 'text-poker-red'
@@ -304,15 +326,17 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
                    )}
                 </div>
               </div>
+              
               {!isLocked && canDelete && (
                 <button 
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const msg = isMe 
-                        ? "Are you sure you want to leave?" 
-                        : `Remove ${player.name}?`;
+                        ? "Are you sure you want to leave the game?" 
+                        : `Remove ${player.name} from the game?`;
                     if (confirm(msg)) removePlayer(player.id);
                   }}
-                  className="text-gray-600 hover:text-red-500 transition-colors p-1"
+                  className="text-gray-600 hover:text-red-500 transition-colors p-2 -mr-2"
                 >
                   <TrashIcon />
                 </button>
@@ -321,7 +345,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
             <div className="grid grid-cols-2 gap-4">
                {/* Buy-ins Control */}
-               <div className={`bg-black/20 rounded-xl p-2 flex items-center justify-between border border-white/5 ${!canEdit ? 'opacity-50' : ''}`}>
+               <div className={`bg-black/20 rounded-xl p-2 flex items-center justify-between border border-white/5 ${!canEdit ? 'opacity-40 pointer-events-none' : ''}`}>
                   <button 
                     disabled={isLocked || !canEdit}
                     onClick={() => updatePlayer(player.id, 'buyInCount', Math.max(0, player.buyInCount - 1))}
@@ -343,7 +367,7 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
                </div>
 
                {/* Chips Input */}
-               <div className={`bg-black/20 rounded-xl p-2 border border-white/5 relative ${!canEdit ? 'opacity-50' : ''}`}>
+               <div className={`bg-black/20 rounded-xl p-2 border border-white/5 relative ${!canEdit ? 'opacity-40 pointer-events-none' : ''}`}>
                   <div className="absolute top-1 left-0 w-full text-center text-[10px] text-gray-500 uppercase font-bold pointer-events-none">Chips</div>
                   <input 
                     type="number"
@@ -425,9 +449,10 @@ export const App = ({ currentUser }: { currentUser: { id: string, name: string, 
 
       {/* Balance Warning Overlay */}
       {calculation && Math.abs(calculation.totalBalance) > 5 && !isSettlementVisible && (
-            <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none">
-                <div className="glass-panel bg-red-500/20 border-red-500/40 text-red-100 px-4 py-1.5 rounded-full text-center text-xs font-bold animate-bounce shadow-lg backdrop-blur-md">
-                ⚠️ Balance: {calculation.totalBalance > 0 ? '+' : ''}{calculation.totalBalance}
+            <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none animate-fade-in-up">
+                <div className="glass-panel bg-red-500/20 border-red-500/40 text-red-100 px-4 py-1.5 rounded-full text-center text-xs font-bold shadow-lg backdrop-blur-md flex items-center space-x-2">
+                    <span>⚠️ Balance: {calculation.totalBalance > 0 ? '+' : ''}{calculation.totalBalance}</span>
+                    {currentUser.isHost && <span className="text-[10px] opacity-70">(Tap + to fix)</span>}
                 </div>
             </div>
       )}
