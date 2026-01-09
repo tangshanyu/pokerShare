@@ -3,6 +3,7 @@ import { Player, CalculationResult } from './types';
 import { calculateSettlement, generateCSV, generateHTMLTable } from './utils/pokerLogic';
 import { getKnownPlayers, saveGameLog } from './utils/storage';
 import { ImportModal } from './components/ImportModal';
+import { PlayerDirectoryModal } from './components/PlayerDirectoryModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
 import { useStorage, useMutation, useOthers, useSelf } from './liveblocks.config';
@@ -59,6 +60,7 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [activeTab, setActiveTab] = useState<'transfers' | 'profits' | 'export'>('transfers');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isPlayerDirectoryOpen, setIsPlayerDirectoryOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [logoClickCount, setLogoClickCount] = useState(0);
@@ -166,14 +168,29 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
     const res = calculateSettlement(players, settings);
     setResult(res);
     
-    // Auto-save history to local device for the Admin Dashboard
+    // Auto-save history and queue for upload
     const roomId = new URLSearchParams(window.location.search).get("room") || "unknown";
-    saveGameLog(roomId, res);
+    // We pass the current user's name as the Host Name for the record if they are host, or just 'Unknown'
+    const hostName = currentUser.isHost ? currentUser.name : 'Unknown';
+    saveGameLog(roomId, res, hostName);
     setKnownPlayers(getKnownPlayers()); // Refresh list
 
     setTimeout(() => {
         document.getElementById('resultsSection')?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+  };
+
+  const handleDirectorySelect = (names: string[]) => {
+      // Add selected names that aren't already in the game
+      // We'll create "Guest" IDs for them
+      const newPlayers: Player[] = names.map(name => ({
+          id: `guest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: name,
+          buyInCount: 1,
+          finalChips: 0
+      }));
+      
+      importPlayers(newPlayers);
   };
 
   const copyLink = () => {
@@ -399,16 +416,26 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
              
              {/* Only Host sees Import/Add buttons */}
              {currentUser.isHost && !isLocked && (
-                <div className="flex space-x-3">
+                <div className="flex flex-wrap items-center gap-2 md:gap-3">
                     <button 
                         onClick={() => setIsImportModalOpen(true)}
-                        className="px-4 py-2 text-sm text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all"
+                        className="px-3 py-2 text-xs md:text-sm text-gray-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all"
                     >
-                        匯入 (Import)
+                        匯入
                     </button>
+                    
+                    <div className="h-6 w-px bg-white/10 hidden md:block"></div>
+
+                    <button 
+                        onClick={() => setIsPlayerDirectoryOpen(true)}
+                        className="px-3 py-2 text-xs md:text-sm bg-blue-600/20 hover:bg-blue-600/30 text-blue-200 border border-blue-500/30 rounded-xl transition-all flex items-center"
+                    >
+                        👥 選擇玩家 (Select)
+                    </button>
+
                     <button 
                         onClick={() => addPlayer({ name: `Player ${players.length + 1}` })}
-                        className="px-4 py-2 text-sm bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white border border-white/10 rounded-xl transition-all shadow-lg flex items-center"
+                        className="px-3 py-2 text-xs md:text-sm bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 text-white border border-white/10 rounded-xl transition-all shadow-lg flex items-center"
                     >
                         <PlusIcon /> <span className="ml-1">Add</span>
                     </button>
@@ -552,92 +579,55 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
                 {activeTab === 'transfers' && (
                   <div className="space-y-4">
                      {result.transfers.length === 0 ? (
-                       <div className="text-center text-gray-500 py-10 bg-white/5 rounded-2xl border border-dashed border-white/10">
-                            No transfers needed. Everyone is even!
+                       <div className="text-center text-gray-500 py-8">
+                         無需轉帳 (No transfers needed)
                        </div>
                      ) : (
                        result.transfers.map((t, i) => (
-                         <div key={i} className="flex items-center justify-between bg-gradient-to-r from-gray-800/40 to-gray-900/40 p-5 rounded-2xl border border-white/5">
-                            <div className="flex items-center space-x-3">
-                               <div className="flex flex-col">
-                                   <span className="font-bold text-red-400 text-lg">{t.fromName}</span>
-                                   <span className="text-[10px] uppercase text-gray-500 font-bold">Sender</span>
-                               </div>
-                               <div className="text-gray-600">➜</div>
-                               <div className="flex flex-col">
-                                   <span className="font-bold text-poker-green text-lg">{t.toName}</span>
-                                   <span className="text-[10px] uppercase text-gray-500 font-bold">Receiver</span>
-                               </div>
+                         <div key={i} className="flex justify-between items-center bg-black/40 p-3 rounded-lg border border-white/5">
+                            <div className="flex items-center space-x-2">
+                                <span className="text-red-400 font-bold">{t.fromName}</span>
+                                <span className="text-gray-500">➜</span>
+                                <span className="text-green-400 font-bold">{t.toName}</span>
                             </div>
-                            <div className="bg-black/30 px-4 py-2 rounded-lg border border-white/10">
-                                <span className="font-mono font-bold text-white text-xl">${t.amount}</span>
-                            </div>
+                            <div className="font-mono font-bold text-poker-gold">${t.amount}</div>
                          </div>
                        ))
-                     )}
-                     {!result.isBalanced && (
-                       <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start space-x-3">
-                         <span className="text-red-400 text-xl">⚠️</span>
-                         <div className="text-red-300 text-sm">
-                            <strong className="block mb-1 text-red-200">帳目不平衡 (Balance Error)</strong>
-                            差額為 ${result.totalBalance}。請檢查籌碼輸入是否正確。
-                         </div>
-                       </div>
                      )}
                   </div>
                 )}
 
                 {activeTab === 'profits' && (
                   <div className="space-y-2">
-                    {result.players
-                      .sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0))
-                      .map((p) => (
-                      <div key={p.id} className="flex justify-between items-center p-4 bg-white/5 rounded-xl border border-transparent hover:border-white/10 transition-colors">
-                         <div className="flex items-center">
-                            <div className={`w-2 h-2 rounded-full mr-4 shadow-[0_0_8px] ${(p.netAmount || 0) >= 0 ? 'bg-poker-green shadow-poker-green' : 'bg-red-500 shadow-red-500'}`}></div>
-                            <span className="font-medium text-gray-200 text-lg">{p.name}</span>
-                         </div>
-                         <span className={`font-mono font-bold text-lg ${(p.netAmount || 0) >= 0 ? 'text-poker-green' : 'text-red-400'}`}>
-                            {(p.netAmount || 0) >= 0 ? '+' : ''}{p.netAmount}
-                         </span>
+                    {result.players.sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0)).map(p => (
+                      <div key={p.id} className="flex justify-between items-center p-3 rounded-lg bg-black/20 border border-white/5">
+                        <span className="font-medium text-white">{p.name}</span>
+                        <span className={`font-mono font-bold ${(p.netAmount || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(p.netAmount || 0) > 0 ? '+' : ''}{p.netAmount}
+                        </span>
                       </div>
                     ))}
                   </div>
                 )}
 
                 {activeTab === 'export' && (
-                   <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <button 
-                            onClick={copyForGoogleDocs}
-                            className="group flex items-center justify-center space-x-2 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/50 text-blue-200 py-4 rounded-xl font-medium transition-all"
-                         >
-                            <DocsIcon />
-                            <span className="group-hover:text-white">Copy for Google Docs</span>
-                         </button>
-                         <button 
-                            onClick={downloadCSV}
-                            className="group flex items-center justify-center space-x-2 bg-green-600/20 hover:bg-green-600/40 border border-green-500/50 text-green-200 py-4 rounded-xl font-medium transition-all"
-                         >
-                            <SheetIcon />
-                            <span className="group-hover:text-white">Download CSV</span>
-                         </button>
-                      </div>
-
-                      <div className="relative group">
-                        <textarea 
-                          readOnly
-                          value={getExportText()}
-                          className="w-full h-64 bg-black/40 text-poker-green font-mono text-sm p-6 rounded-2xl border border-white/10 focus:outline-none focus:border-white/20 transition-colors resize-none"
-                        />
-                        <button 
-                          onClick={copyExportText}
-                          className="absolute bottom-4 right-4 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 text-xs rounded-lg transition-colors border border-gray-600"
-                        >
-                          Copy Plain Text
-                        </button>
-                      </div>
-                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button onClick={copyExportText} className="flex flex-col items-center justify-center p-6 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-all">
+                       <SheetIcon />
+                       <span className="mt-2 font-bold text-sm">複製文字報告</span>
+                       <span className="text-xs text-gray-500 mt-1">Copy Text</span>
+                    </button>
+                    <button onClick={copyForGoogleDocs} className="flex flex-col items-center justify-center p-6 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-300 rounded-xl transition-all">
+                       <DocsIcon />
+                       <span className="mt-2 font-bold text-sm">複製表格 (Docs)</span>
+                       <span className="text-xs text-blue-400/50 mt-1">Copy Table</span>
+                    </button>
+                    <button onClick={downloadCSV} className="flex flex-col items-center justify-center p-6 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 text-green-300 rounded-xl transition-all">
+                       <div className="rotate-180"><ShareIcon /></div> 
+                       <span className="mt-2 font-bold text-sm">下載 CSV</span>
+                       <span className="text-xs text-green-400/50 mt-1">Download</span>
+                    </button>
+                  </div>
                 )}
              </div>
           </section>
@@ -647,26 +637,29 @@ const App: React.FC<AppProps> = ({ currentUser }) => {
       <ImportModal 
         isOpen={isImportModalOpen} 
         onClose={() => setIsImportModalOpen(false)} 
-        onImport={(newPlayers) => importPlayers(newPlayers)}
-      />
-
-      <ChatRoom 
-        currentUser={currentUser}
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
+        onImport={importPlayers} 
       />
       
-      <RoomManager
+      <PlayerDirectoryModal 
+         isOpen={isPlayerDirectoryOpen}
+         onClose={() => setIsPlayerDirectoryOpen(false)}
+         onSelect={handleDirectorySelect}
+         existingNames={players.map(p => p.name)}
+      />
+
+      <RoomManager 
         isOpen={isManagerOpen}
         onClose={() => setIsManagerOpen(false)}
         settings={settings}
         updateSettings={updateSettings}
         isHost={currentUser.isHost}
       />
-
-      <footer className="mt-16 text-center text-gray-500 text-sm">
-        <p>© 2024 Poker Settlement Pro v3.1</p>
-      </footer>
+      
+      <ChatRoom 
+        currentUser={currentUser}
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+      />
     </div>
   );
 };

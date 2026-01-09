@@ -32,3 +32,11 @@ export interface ChatMessage {
   text: string;
   timestamp: number;
 }
+
+// Global Stats DB Structure
+export interface GameLog {
+  roomId: string;
+  timestamp: number;
+  hostName: string;
+  players: { name: string; net: number }[];
+}

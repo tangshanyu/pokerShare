@@ -1,7 +1,7 @@
 import { createClient } from "@liveblocks/client";
 import { createRoomContext } from "@liveblocks/react";
 import { LiveList, LiveObject } from "@liveblocks/client";
-import { Player, GameSettings, ChatMessage } from "./types";
+import { Player, GameSettings, ChatMessage, GameLog } from "./types";
 
 // Helper to safely get the API key in different environments
 const getApiKey = (): string | undefined => {
@@ -41,11 +41,17 @@ type Presence = {
   name?: string;
 };
 
-// Storage represents the shared document that persists in the room
+// Storage represents the shared document that persists in the room.
+// We make fields optional so different room types (Game vs Database) can coexist.
 type Storage = {
-  players: LiveList<Player>;
-  settings: LiveObject<GameSettings>;
-  messages: LiveList<ChatMessage>;
+  // Game Room Fields
+  players?: LiveList<Player>;
+  settings?: LiveObject<GameSettings>;
+  messages?: LiveList<ChatMessage>;
+  
+  // Global Database Room Fields
+  gameLogs?: LiveList<GameLog>;
+  playerDirectory?: LiveList<string>; // New: Synced List of Known Players
 };
 
 export const {

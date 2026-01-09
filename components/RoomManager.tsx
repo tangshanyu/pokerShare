@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { GameSettings } from '../types';
-import { getGameLogs, GameLog, clearGameLogs } from '../utils/storage';
+import { GameSettings, GameLog } from '../types';
+import { getGameLogs, clearGameLogs, getPendingUploads, clearPendingUploads } from '../utils/storage';
+import { RoomProvider, useMutation, useStorage } from '../liveblocks.config';
+import { LiveList } from '@liveblocks/client';
+import { ClientSideSuspense } from "@liveblocks/react";
 
 interface RoomManagerProps {
   isOpen: boolean;
@@ -10,93 +13,56 @@ interface RoomManagerProps {
   isHost?: boolean;
 }
 
-interface RoomHistory {
-  roomId: string;
-  timestamp: number;
-  hostName: string;
-}
+// --- Inner Component that Connects to Global DB ---
+// This runs INSIDE the Global DB Room Context
+const GlobalStatsView = ({ onClose }: { onClose: () => void }) => {
+  const globalGameLogs = useStorage((root) => root.gameLogs);
+  const [localStatus, setLocalStatus] = useState("Syncing...");
+  
+  // Define Mutation to push pending logs
+  const uploadLogs = useMutation(({ storage }, logsToUpload: GameLog[]) => {
+      let remoteLogs = storage.get("gameLogs");
+      
+      // Initialize if missing
+      if (!remoteLogs) {
+          remoteLogs = new LiveList<GameLog>([]);
+          storage.set("gameLogs", remoteLogs);
+      }
 
-interface GlobalRoom {
-  type: "room";
-  id: string;
-  lastConnectionAt: string;
-  createdAt: string;
-  metadata: Record<string, any>;
-}
+      // Append new logs (Check for duplicates roughly by timestamp+roomId if needed, 
+      // but here we trust the queue is cleared after upload)
+      // A simple duplicate check:
+      const existingIds = new Set(remoteLogs.map(l => l.roomId));
+      
+      logsToUpload.forEach(log => {
+          if (!existingIds.has(log.roomId)) {
+             remoteLogs!.push(log);
+          }
+      });
+  }, []);
 
-// Stats Interface
-interface SystemStats {
-  totalRooms: number;
-  activeToday: number; // Active in last 24h
-  createdToday: number; // ID starts with today's date
-  totalPlayersEstimate: number; // Rough estimate based on logic
-}
-
-interface PlayerStat {
-  name: string;
-  gamesPlayed: number;
-  totalNet: number;
-  lastPlayed: number;
-}
-
-export const RoomManager: React.FC<RoomManagerProps> = ({ 
-  isOpen, 
-  onClose, 
-  settings, 
-  updateSettings, 
-  isHost = false
-}) => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'local' | 'player_stats'>('dashboard');
-  const [history, setHistory] = useState<RoomHistory[]>([]);
-  const [gameLogs, setGameLogs] = useState<GameLog[]>([]);
-  const [globalRooms, setGlobalRooms] = useState<GlobalRoom[]>([]);
-  const [isLoadingGlobal, setIsLoadingGlobal] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
-
-  // Determine mode
-  const isLobbyMode = !settings || !updateSettings;
-
+  // Sync Effect
   useEffect(() => {
-    if (isOpen) {
-      loadHistory();
-      fetchGlobalRooms();
-      setGameLogs(getGameLogs());
+    if (globalGameLogs === undefined) return; // Wait for connection
+
+    const pending = getPendingUploads();
+    if (pending.length > 0) {
+        setLocalStatus(`Uploading ${pending.length} new records...`);
+        uploadLogs(pending);
+        clearPendingUploads();
+        setLocalStatus("Sync Complete.");
+    } else {
+        setLocalStatus("Up to date.");
     }
-  }, [isOpen]);
+  }, [globalGameLogs, uploadLogs]);
 
-  // Calculate Statistics
-  const stats: SystemStats = useMemo(() => {
-    const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  // Calculate Player Stats from GLOBAL Data
+  const playerStats = useMemo(() => {
+    if (!globalGameLogs) return [];
     
-    // Get YYYYMMDD for today
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const datePrefix = `${year}${month}${day}`;
-
-    let activeCount = 0;
-    let createdCount = 0;
-
-    globalRooms.forEach(room => {
-        const lastActive = new Date(room.lastConnectionAt);
-        if (lastActive > oneDayAgo) activeCount++;
-        if (room.id.startsWith(datePrefix)) createdCount++;
-    });
-
-    return {
-        totalRooms: globalRooms.length,
-        activeToday: activeCount,
-        createdToday: createdCount,
-        totalPlayersEstimate: globalRooms.length * 4 // Heuristic avg
-    };
-  }, [globalRooms]);
-
-  // Calculate Player Stats
-  const playerStats: PlayerStat[] = useMemo(() => {
-    const map = new Map<string, PlayerStat>();
+    const map = new Map<string, { name: string, gamesPlayed: number, totalNet: number, lastPlayed: number }>();
     
-    gameLogs.forEach(log => {
+    globalGameLogs.forEach(log => {
       log.players.forEach(p => {
         const name = p.name;
         if (!map.has(name)) {
@@ -112,8 +78,130 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
     });
 
     return Array.from(map.values()).sort((a, b) => b.totalNet - a.totalNet);
-  }, [gameLogs]);
+  }, [globalGameLogs]);
 
+  return (
+      <div className="h-full flex flex-col">
+          <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-xs font-bold text-poker-gold uppercase tracking-wider">Global Leaderboard (Cloud DB)</h3>
+                <p className="text-[10px] text-gray-400 mt-1">Status: <span className="text-poker-green">{localStatus}</span></p>
+              </div>
+              <div className="text-[10px] text-gray-500 bg-white/5 px-2 py-1 rounded">
+                 Records: {globalGameLogs?.length || 0}
+              </div>
+          </div>
+
+          {!globalGameLogs ? (
+               <div className="text-center py-12 text-gray-500">
+                  <div className="animate-spin h-6 w-6 border-2 border-poker-green border-t-transparent rounded-full mx-auto mb-2"></div>
+                  Connecting to Global DB...
+               </div>
+          ) : playerStats.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 border border-dashed border-white/10 rounded-xl">
+                  <p>Cloud database is empty.</p>
+              </div>
+          ) : (
+              <div className="bg-black/20 rounded-xl border border-white/5 overflow-hidden flex-1 overflow-y-auto custom-scrollbar">
+                  <table className="w-full text-left text-xs">
+                      <thead className="bg-white/5 text-gray-400 font-medium sticky top-0 backdrop-blur-md">
+                          <tr>
+                              <th className="p-3">Rank</th>
+                              <th className="p-3">Player</th>
+                              <th className="p-3 text-right">Games</th>
+                              <th className="p-3 text-right">Total Net</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                          {playerStats.map((stat, i) => (
+                              <tr key={stat.name} className="hover:bg-white/5 transition-colors">
+                                  <td className="p-3 font-mono text-gray-500 w-12">#{i + 1}</td>
+                                  <td className="p-3 font-bold text-white">{stat.name}</td>
+                                  <td className="p-3 text-right text-gray-400">{stat.gamesPlayed}</td>
+                                  <td className={`p-3 text-right font-mono font-bold text-sm ${stat.totalNet >= 0 ? 'text-poker-green' : 'text-red-400'}`}>
+                                      {stat.totalNet >= 0 ? '+' : ''}{stat.totalNet}
+                                  </td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          )}
+      </div>
+  );
+};
+
+// --- Main Manager Component ---
+
+interface RoomHistory {
+  roomId: string;
+  timestamp: number;
+  hostName: string;
+}
+
+interface GlobalRoom {
+  type: "room";
+  id: string;
+  lastConnectionAt: string;
+  createdAt: string;
+  metadata: Record<string, any>;
+}
+
+interface SystemStats {
+  totalRooms: number;
+  activeToday: number;
+  createdToday: number;
+  totalPlayersEstimate: number;
+}
+
+export const RoomManager: React.FC<RoomManagerProps> = ({ 
+  isOpen, 
+  onClose, 
+  settings, 
+  updateSettings, 
+  isHost = false
+}) => {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'local' | 'player_stats'>('dashboard');
+  const [history, setHistory] = useState<RoomHistory[]>([]);
+  const [globalRooms, setGlobalRooms] = useState<GlobalRoom[]>([]);
+  const [isLoadingGlobal, setIsLoadingGlobal] = useState(false);
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // Global DB Room ID constant
+  const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
+
+  // Determine mode
+  const isLobbyMode = !settings || !updateSettings;
+
+  useEffect(() => {
+    if (isOpen) {
+      loadHistory();
+      fetchGlobalRooms();
+    }
+  }, [isOpen]);
+
+  // Calculate Statistics (Room Based)
+  const stats: SystemStats = useMemo(() => {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const datePrefix = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+
+    let activeCount = 0;
+    let createdCount = 0;
+
+    globalRooms.forEach(room => {
+        const lastActive = new Date(room.lastConnectionAt);
+        if (lastActive > oneDayAgo) activeCount++;
+        if (room.id.startsWith(datePrefix)) createdCount++;
+    });
+
+    return {
+        totalRooms: globalRooms.length,
+        activeToday: activeCount,
+        createdToday: createdCount,
+        totalPlayersEstimate: globalRooms.length * 4
+    };
+  }, [globalRooms]);
 
   const loadHistory = () => {
     try {
@@ -171,13 +259,6 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
       loadHistory();
     }
   };
-  
-  const handleClearStats = () => {
-      if (window.confirm("確定要清除所有戰績紀錄嗎？這將重置所有玩家的損益表。")) {
-          clearGameLogs();
-          setGameLogs([]);
-      }
-  };
 
   if (!isOpen) return null;
 
@@ -232,7 +313,6 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
           {/* TAB: DASHBOARD */}
           {activeTab === 'dashboard' && (
               <div className="space-y-6">
-                  {/* Stats Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="bg-white/5 p-4 rounded-xl border border-white/10">
                           <div className="text-gray-500 text-xs uppercase font-bold mb-1">Total Rooms</div>
@@ -252,7 +332,6 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                       </div>
                   </div>
 
-                  {/* Current Room Controls (Only if in-game) */}
                   {!isLobbyMode && settings && updateSettings && (
                     <div className="bg-red-500/5 border border-red-500/20 rounded-xl p-5">
                         <h3 className="text-red-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center">
@@ -281,46 +360,23 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
               </div>
           )}
 
-          {/* TAB: PLAYER STATS */}
+          {/* TAB: PLAYER STATS (Connects to Global DB Room) */}
           {activeTab === 'player_stats' && (
-              <div>
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-xs font-bold text-poker-gold uppercase tracking-wider">Lifetime Leaderboard (Local Data)</h3>
-                      <button onClick={handleClearStats} className="text-xs text-red-400 hover:text-red-300 border border-red-500/20 px-2 py-1 rounded">Reset Stats</button>
-                  </div>
-
-                  {playerStats.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500 border border-dashed border-white/10 rounded-xl">
-                          <p>尚無戰績資料。</p>
-                          <p className="text-xs mt-2 text-gray-600">每次結算時會自動記錄於此裝置。</p>
-                      </div>
-                  ) : (
-                      <div className="bg-black/20 rounded-xl border border-white/5 overflow-hidden">
-                          <table className="w-full text-left text-xs">
-                              <thead className="bg-white/5 text-gray-400 font-medium">
-                                  <tr>
-                                      <th className="p-3">Rank</th>
-                                      <th className="p-3">Player</th>
-                                      <th className="p-3 text-right">Games</th>
-                                      <th className="p-3 text-right">Total Net</th>
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-white/5">
-                                  {playerStats.map((stat, i) => (
-                                      <tr key={stat.name} className="hover:bg-white/5 transition-colors">
-                                          <td className="p-3 font-mono text-gray-500 w-12">#{i + 1}</td>
-                                          <td className="p-3 font-bold text-white">{stat.name}</td>
-                                          <td className="p-3 text-right text-gray-400">{stat.gamesPlayed}</td>
-                                          <td className={`p-3 text-right font-mono font-bold text-sm ${stat.totalNet >= 0 ? 'text-poker-green' : 'text-red-400'}`}>
-                                              {stat.totalNet >= 0 ? '+' : ''}{stat.totalNet}
-                                          </td>
-                                      </tr>
-                                  ))}
-                              </tbody>
-                          </table>
-                      </div>
-                  )}
-              </div>
+              // We create a new RoomProvider specifically for the DB room
+              <RoomProvider 
+                  id={GLOBAL_DB_ROOM_ID} 
+                  initialPresence={{}} 
+                  initialStorage={{ gameLogs: new LiveList([]) }}
+              >
+                 <ClientSideSuspense fallback={
+                    <div className="py-12 flex justify-center text-gray-500">
+                        <div className="animate-spin h-6 w-6 border-2 border-poker-green border-t-transparent rounded-full mr-3"></div>
+                        Connecting to Database...
+                    </div>
+                 }>
+                    {() => <GlobalStatsView onClose={onClose} />}
+                 </ClientSideSuspense>
+              </RoomProvider>
           )}
 
           {/* TAB: GLOBAL ROOMS */}
