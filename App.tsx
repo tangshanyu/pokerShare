@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Player, CalculationResult } from './types';
 import { calculateSettlement } from './utils/pokerLogic';
-import { saveGameLog } from './utils/storage';
 import { ImportModal } from './components/ImportModal';
 import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
-import { SettlementModal } from './components/SettlementModal';
-import { ReportsScreen } from './components/ReportsScreen';
+import { SettlementPanel } from './components/SettlementPanel';
 import { useStorage, useMutation, useOthers, useStatus } from './liveblocks.config';
 
 // Icons
@@ -26,9 +25,6 @@ const DocsIcon = () => (
 const ChatIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 );
-const StatsIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-);
 
 // Styled Loading Component
 const LoadingBlock = ({ message = "Loading..." }: { message?: string }) => (
@@ -42,13 +38,10 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
   // Liveblocks Storage
   const players = useStorage((root) => root.players);
   const settings = useStorage((root) => root.settings);
-  const messages = useStorage((root) => root.messages);
   const others = useOthers();
   const status = useStatus();
 
   // Local UI State
-  const [isSettlementOpen, setIsSettlementOpen] = useState(false);
-  const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -104,6 +97,11 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
     }
   }, []);
 
+  const toggleLock = useMutation(({ storage }, isLocked: boolean) => {
+      const s = storage.get('settings');
+      if (s) s.set('isLocked', isLocked);
+  }, []);
+
   const importPlayers = useMutation(({ storage }, importedPlayers: Player[]) => {
     const playersList = storage.get('players');
     if (!playersList) return;
@@ -129,11 +127,26 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
   }
 
   // Derived Values
-  const unreadMessages = 0; // Simplified for now
+  const unreadMessages = 0; 
   const isLocked = settings.isLocked;
 
+  const handleSettle = () => {
+    const confirmed = window.confirm("確定要結算並鎖定房間嗎？(Settle & Lock?)");
+    if (confirmed) {
+        toggleLock(true);
+        // Scroll to bottom after a short delay to ensure render
+        setTimeout(() => {
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }, 100);
+    }
+  };
+
+  const handleUnlock = () => {
+      toggleLock(false);
+  };
+
   return (
-    <div className="min-h-screen bg-[#0f0f13] text-white font-sans pb-32 md:pb-0 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0f0f13] text-white font-sans pb-32 relative overflow-hidden flex flex-col">
       
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-40 bg-[#0f0f13]/90 backdrop-blur-md border-b border-white/10 h-16 flex items-center justify-between px-4">
@@ -164,7 +177,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
       </nav>
 
       {/* Main Content */}
-      <main className="pt-20 px-4 max-w-5xl mx-auto">
+      <main className="pt-20 px-4 max-w-5xl mx-auto flex-1 w-full">
          
          {/* Info Banner */}
          <div className="flex justify-between items-end mb-6 animate-fade-in-up">
@@ -193,7 +206,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
          </div>
 
          {/* Player List */}
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-24">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
              {players.map((player) => {
                  const currentNet = calculationResult?.players.find(p => p.id === player.id)?.netAmount || 0;
                  return (
@@ -279,16 +292,29 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
          </div>
       </main>
 
-      {/* Floating Settlement Button */}
-      <div className="fixed bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
-          <button 
-              onClick={() => setIsSettlementOpen(true)}
-              className="pointer-events-auto bg-gradient-to-r from-poker-gold to-orange-500 text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,165,2,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center space-x-2 border border-yellow-500/50"
-          >
-              <ShareIcon />
-              <span>結算 (Settle)</span>
-          </button>
-      </div>
+      {/* Action Area: Either Floating Button OR Settlement Panel */}
+      {isLocked ? (
+          <SettlementPanel 
+            result={calculationResult}
+            settings={settings}
+            onUnlock={handleUnlock}
+            currentUserIsHost={currentUser.isHost}
+          />
+      ) : (
+        <div className="fixed bottom-8 left-0 right-0 z-30 flex justify-center">
+            <button 
+                onClick={handleSettle}
+                disabled={players.length === 0}
+                className={`
+                    px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,165,2,0.4)] transition-all flex items-center space-x-2 border
+                    ${players.length === 0 ? 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-poker-gold to-orange-500 text-black hover:scale-105 active:scale-95 border-yellow-500/50'}
+                `}
+            >
+                <ShareIcon />
+                <span>結算 (Settle & Lock)</span>
+            </button>
+        </div>
+      )}
 
       {/* Modals */}
       <ImportModal 
@@ -303,25 +329,6 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
         onAdd={(name) => addPlayer(name)}
         existingNames={players.map(p => p.name)}
       />
-
-      <SettlementModal 
-        isOpen={isSettlementOpen} 
-        onClose={() => setIsSettlementOpen(false)} 
-        result={calculationResult}
-        settings={settings}
-        onShowCharts={() => {
-            setIsSettlementOpen(false);
-            setIsReportsOpen(true);
-        }}
-      />
-
-      {isReportsOpen && (
-          <ReportsScreen 
-             onBack={() => setIsReportsOpen(false)}
-             players={Array.from(players)}
-             result={calculationResult}
-          />
-      )}
 
       <RoomManager 
         isOpen={isManagerOpen}
