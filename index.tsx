@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
@@ -116,14 +117,29 @@ const LobbyScreen = ({
     onCreateClick: () => void, 
     openManager: () => void
 }) => {
-    const [history, setHistory] = useState<any[]>([]);
-    const [selectedHistory, setSelectedHistory] = useState("");
+    const [activeRooms, setActiveRooms] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedRoom, setSelectedRoom] = useState("");
 
+    // Fetch rooms from Liveblocks API instead of Local Storage
     useEffect(() => {
-        setHistory(getLocalHistory());
+        const fetchRooms = async () => {
+            try {
+                const res = await fetch('/api/rooms');
+                if (res.ok) {
+                    const data = await res.json();
+                    setActiveRooms(data.rooms || []);
+                }
+            } catch (e) {
+                console.error("Failed to fetch active rooms", e);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchRooms();
     }, []);
 
-    const handleHistoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const handleRoomChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const roomId = e.target.value;
         if (roomId) {
             window.location.href = `?room=${roomId}`;
@@ -166,24 +182,31 @@ const LobbyScreen = ({
                  </button>
              </div>
 
-             {/* Bottom: History Dropdown */}
+             {/* Bottom: Live Rooms Dropdown */}
              <div className="w-full max-w-md">
                  <div className="relative">
                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
-                        🕒
+                        {isLoading ? (
+                            <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                        ) : (
+                            '🌍'
+                        )}
                     </div>
                     <select
-                        value={selectedHistory}
-                        onChange={handleHistoryChange}
-                        className="w-full bg-black/30 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-gray-300 focus:outline-none focus:border-white/30 appearance-none cursor-pointer hover:bg-black/40 transition-colors"
+                        value={selectedRoom}
+                        onChange={handleRoomChange}
+                        disabled={isLoading}
+                        className="w-full bg-black/30 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-gray-300 focus:outline-none focus:border-white/30 appearance-none cursor-pointer hover:bg-black/40 transition-colors disabled:opacity-50"
                     >
-                        <option value="" disabled>快速進入歷史房間 (Recent Rooms)...</option>
-                        {history.length === 0 ? (
-                            <option value="" disabled>無歷史紀錄 (No History)</option>
+                        <option value="" disabled>
+                            {isLoading ? "正在搜尋活躍房間 (Loading)..." : "加入活躍房間 (Active Live Rooms)..."}
+                        </option>
+                        {!isLoading && activeRooms.length === 0 ? (
+                            <option value="" disabled>無活躍房間 (No Active Rooms)</option>
                         ) : (
-                            history.map(r => (
-                                <option key={r.roomId} value={r.roomId}>
-                                    {r.roomId} - {new Date(r.timestamp).toLocaleDateString()} ({r.hostName})
+                            activeRooms.map(r => (
+                                <option key={r.id} value={r.id}>
+                                    {r.id} - {new Date(r.lastConnectionAt).toLocaleDateString()}
                                 </option>
                             ))
                         )}
