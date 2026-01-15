@@ -91,32 +91,49 @@ export const calculateSettlement = (players: readonly Player[], settings: Readon
 // --- Export Helpers ---
 
 export const generateTextSummary = (result: CalculationResult, settings: GameSettings): string => {
-    let text = `🎲 Poker Settlement Results 🎲\n`;
-    text += `---------------------------\n`;
-    
+    const { chipPerBuyIn, cashPerBuyIn } = settings;
+    const exchangeRate = cashPerBuyIn / chipPerBuyIn;
+    const dateStr = new Date().toLocaleDateString();
+
+    let text = `德州撲克結算\n`;
+    text += `====================\n`;
+    text += `日期: ${dateStr}\n`;
+    text += `兌換比例: ${chipPerBuyIn} 籌碼 = ${cashPerBuyIn} 現金\n`;
+    text += `====================\n\n`;
+
     if (!result.isBalanced) {
-        text += `⚠️ ERROR: Game Not Balanced!\n`;
-        text += `Discrepancy: ${result.totalBalance > 0 ? '+' : ''}${result.totalBalance}\n`;
-        text += `Please check chips and buy-ins.\n`;
-        text += `---------------------------\n`;
+        text += `⚠️ 錯誤: 金額不平衡! 差異: ${result.totalBalance > 0 ? '+' : ''}${result.totalBalance}\n`;
+        text += `請檢查籌碼與買入金額。\n`;
+        text += `---------------------------\n\n`;
     }
 
     // Players
-    text += `[Player Stats]\n`;
-    result.players.sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0)).forEach(p => {
+    // Sort by Net Amount descending (Winners first)
+    const sortedPlayers = [...result.players].sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0));
+    
+    sortedPlayers.forEach(p => {
         const net = p.netAmount || 0;
-        const sign = net > 0 ? '+' : '';
-        text += `${p.name}: ${sign}${net} (Buy: ${p.buyInCount}, Chips: ${p.finalChips})\n`;
+        const cost = p.buyInCount * cashPerBuyIn;
+        // Calculate remaining value based on final chips
+        const value = Math.round(p.finalChips * exchangeRate);
+        const sign = net >= 0 ? '+' : '-'; // Explicit sign
+
+        text += `玩家: ${p.name}\n`;
+        text += `  - 購買籌碼組數: ${p.buyInCount}\n`;
+        text += `  - 剩餘籌碼: ${p.finalChips}\n`;
+        text += `  - 成本: $${cost}\n`;
+        text += `  - 剩餘價值: $${value}\n`;
+        text += `  - 損益: $${sign}${Math.abs(net)}\n\n`;
     });
 
     // Transfers
     if (result.isBalanced && result.transfers.length > 0) {
-        text += `\n[Transfers - Who Pays Whom]\n`;
+        text += `轉帳方案:\n`;
         result.transfers.forEach(t => {
-            text += `💸 ${t.fromName} ➔ $${t.amount} ➔ ${t.toName}\n`;
+            text += `  - ${t.fromName} 需支付給 ${t.toName} $${t.amount}\n`;
         });
     } else if (result.isBalanced) {
-        text += `\nNo transfers needed (Perfectly Settled).\n`;
+        text += `無需轉帳 (帳目完美平衡)\n`;
     }
 
     return text;

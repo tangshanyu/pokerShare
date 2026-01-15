@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { CalculationResult, GameSettings } from '../types';
 import { generateTextSummary } from '../utils/pokerLogic';
 
@@ -16,9 +16,13 @@ export const SettlementPanel: React.FC<SettlementPanelProps> = ({ result, settin
   // Helpers
   const sortedPlayers = [...result.players].sort((a, b) => (b.netAmount || 0) - (a.netAmount || 0));
   
+  // Memoize the text so it doesn't regenerate on every render
+  const summaryText = useMemo(() => {
+      return generateTextSummary(result, settings);
+  }, [result, settings]);
+
   const handleCopyText = () => {
-      const text = generateTextSummary(result, settings);
-      navigator.clipboard.writeText(text);
+      navigator.clipboard.writeText(summaryText);
       alert("✅ 文字報表已複製 (Text Report Copied)");
   };
 
@@ -27,7 +31,7 @@ export const SettlementPanel: React.FC<SettlementPanelProps> = ({ result, settin
         try {
             await navigator.share({
                 title: 'Poker Results',
-                text: generateTextSummary(result, settings),
+                text: summaryText,
                 url: window.location.href
             });
         } catch (e) {
@@ -84,7 +88,7 @@ export const SettlementPanel: React.FC<SettlementPanelProps> = ({ result, settin
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             
             {/* Left Column: Stats */}
             <div className="space-y-6">
@@ -186,6 +190,27 @@ export const SettlementPanel: React.FC<SettlementPanelProps> = ({ result, settin
                         )}
                     </div>
                  </div>
+            </div>
+        </div>
+
+        {/* Bottom Section: Text Report */}
+        <div className="bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
+            <div className="p-4 bg-white/5 border-b border-white/5 flex justify-between items-center">
+                <h3 className="font-bold text-gray-300">📋 文字報表 (Text Report)</h3>
+                <button 
+                    onClick={handleCopyText}
+                    className="text-xs font-bold bg-poker-green text-black px-3 py-1.5 rounded-lg hover:bg-emerald-400 transition-colors flex items-center gap-1 shadow-lg"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    複製全文 (Copy)
+                </button>
+            </div>
+            <div className="p-0">
+                <textarea 
+                    readOnly
+                    value={summaryText}
+                    className="w-full h-64 bg-black/40 p-4 text-xs md:text-sm font-mono text-gray-300 focus:outline-none resize-y custom-scrollbar leading-relaxed"
+                />
             </div>
         </div>
       </div>

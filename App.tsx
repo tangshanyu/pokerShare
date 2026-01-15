@@ -25,6 +25,9 @@ const DocsIcon = () => (
 const ChatIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 );
+const SettingsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+);
 
 // Styled Loading Component
 const LoadingBlock = ({ message = "Loading..." }: { message?: string }) => (
@@ -145,17 +148,22 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
       toggleLock(false);
   };
 
+  const handleGoHome = () => {
+      // Clear URL params to go back to Lobby
+      window.location.href = window.location.pathname;
+  };
+
   return (
     <div className="min-h-screen bg-[#0f0f13] text-white font-sans pb-32 relative overflow-hidden flex flex-col">
       
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-40 bg-[#0f0f13]/90 backdrop-blur-md border-b border-white/10 h-16 flex items-center justify-between px-4">
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setIsManagerOpen(true)}>
-          <div className="w-8 h-8 bg-poker-green rounded-lg flex items-center justify-center text-black font-bold text-lg shadow-lg shadow-poker-green/20">
+        <div className="flex items-center space-x-3 cursor-pointer group" onClick={handleGoHome} title="Back to Lobby">
+          <div className="w-8 h-8 bg-poker-green rounded-lg flex items-center justify-center text-black font-bold text-lg shadow-lg shadow-poker-green/20 group-hover:scale-105 transition-transform">
             P
           </div>
           <div className="flex flex-col">
-             <span className="font-bold text-sm tracking-wide text-white">{settings.gameTitle || 'Poker Night'}</span>
+             <span className="font-bold text-sm tracking-wide text-white group-hover:text-poker-green transition-colors">{settings.gameTitle || 'Poker Night'}</span>
              <span className="text-[10px] text-gray-500 font-mono flex items-center">
                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${status === 'connected' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
                {players.length} Players
@@ -188,6 +196,13 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
                 </p>
              </div>
              <div className="flex space-x-2">
+                 <button 
+                    onClick={() => setIsManagerOpen(true)}
+                    className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5"
+                    title="Room Settings / Admin"
+                 >
+                     <SettingsIcon />
+                 </button>
                  <button 
                     onClick={() => setIsImportOpen(true)}
                     className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5"
