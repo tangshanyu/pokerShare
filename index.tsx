@@ -287,6 +287,20 @@ const CreateRoomForm = ({
       const newRoomId = await generateSequentialRoomId();
       const userId = getUserId();
       
+      const finalTitle = gameTitle.trim() || getDefaultGameTitle();
+
+      // 3. Explicitly Create Room with Metadata on Backend
+      // This ensures the title appears in the lobby list immediately
+      await fetch('/api/rooms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              roomId: newRoomId,
+              title: finalTitle,
+              intent: 'create' // Flag to force creation/permission setting
+          })
+      });
+
       localStorage.setItem(`poker_is_host_${newRoomId}`, 'true');
       saveRoomToHistory(newRoomId, name);
 
@@ -297,11 +311,12 @@ const CreateRoomForm = ({
         initialSettings: { 
             chip: chipRatio, 
             cash: cashRatio,
-            gameTitle: gameTitle.trim() || getDefaultGameTitle()
+            gameTitle: finalTitle
         }
       }, newRoomId);
     } catch (e) {
-      alert("建立房間失敗，請稍後再試");
+      console.error(e);
+      alert("建立房間失敗，請檢查網路連線 (Failed to create room)");
       setIsGenerating(false);
     }
   };
@@ -373,7 +388,7 @@ const CreateRoomForm = ({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  產生房間 ID...
+                  建立中...
                 </>
               ) : (
                 '🚀 開始 (Start)'
