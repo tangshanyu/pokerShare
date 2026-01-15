@@ -212,7 +212,7 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                     <table className="w-full text-left text-xs">
                         <thead className="bg-white/5 text-gray-400 font-medium">
                             <tr>
-                                <th className="p-3">Room ID</th>
+                                <th className="p-3">Room Details</th>
                                 <th className="p-3">Created</th>
                                 <th className="p-3">Active</th>
                                 <th className="p-3 text-right">Action</th>
@@ -221,7 +221,10 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                         <tbody className="divide-y divide-white/5">
                             {globalRooms.map(room => (
                                 <tr key={room.id} className="hover:bg-white/5 transition-colors group">
-                                    <td className="p-3 font-mono text-blue-300">{room.id}</td>
+                                    <td className="p-3">
+                                        <div className="font-bold text-white mb-0.5">{room.metadata?.title || 'Untitled Room'}</div>
+                                        <div className="font-mono text-blue-300/60 text-[10px]">{room.id}</div>
+                                    </td>
                                     <td className="p-3 text-gray-500">{new Date(room.createdAt).toLocaleDateString()}</td>
                                     <td className="p-3 text-gray-400">{new Date(room.lastConnectionAt).toLocaleString()}</td>
                                     <td className="p-3 text-right flex justify-end space-x-2">

@@ -406,6 +406,22 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
   const roomId = new URLSearchParams(window.location.search).get("room");
   const isPreviouslyHost = localStorage.getItem(`poker_is_host_${roomId}`) === 'true';
   const [clickCount, setClickCount] = useState(0);
+  const [roomTitle, setRoomTitle] = useState<string | null>(null);
+
+  // Fetch Room Title
+  useEffect(() => {
+      if (roomId) {
+          fetch('/api/rooms')
+              .then(res => res.json())
+              .then(data => {
+                  const room = data.rooms?.find((r: any) => r.id === roomId);
+                  if (room?.metadata?.title) {
+                      setRoomTitle(room.metadata.title);
+                  }
+              })
+              .catch(console.error);
+      }
+  }, [roomId]);
 
   const handleJoin = () => {
     if (!name.trim()) return alert("請輸入玩家名稱 (Please enter a name)");
@@ -437,9 +453,18 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-blue-500/10 to-transparent animate-spin-slow pointer-events-none"></div>
         
         <div className="relative z-10">
-          <div onClick={handleLogoClick} className="cursor-pointer select-none">
-            <h1 className="text-3xl font-bold mb-2 tracking-tight text-center">加入房間</h1>
-            <p className="text-gray-400 mb-8 text-center text-sm font-mono tracking-wider bg-white/5 py-2 rounded-lg border border-white/5">{roomId}</p>
+          <div onClick={handleLogoClick} className="cursor-pointer select-none text-center mb-8">
+            <h1 className="text-3xl font-bold mb-2 tracking-tight">加入房間</h1>
+            {roomTitle ? (
+                <div className="flex flex-col items-center animate-fade-in">
+                    <h2 className="text-xl text-poker-green font-bold mb-1">{roomTitle}</h2>
+                    <p className="text-gray-500 text-xs font-mono">ID: {roomId}</p>
+                </div>
+            ) : (
+                <p className="text-gray-400 text-sm font-mono tracking-wider bg-white/5 py-2 rounded-lg border border-white/5 inline-block px-4">
+                    {roomId}
+                </p>
+            )}
           </div>
 
           <div className="space-y-6">
