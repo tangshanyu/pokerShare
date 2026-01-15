@@ -1,9 +1,9 @@
+
 import { Player, CalculationResult, GameLog } from '../types';
 
 const STORAGE_KEYS = {
   KNOWN_PLAYERS: 'poker_known_players',
-  GAME_RESULTS: 'poker_game_results_log',
-  PENDING_UPLOADS: 'poker_pending_uploads'
+  GAME_RESULTS: 'poker_game_results_log'
 };
 
 // --- Player Registry (Name Suggestions) ---
@@ -54,7 +54,7 @@ export const removeKnownPlayer = (nameToRemove: string) => {
   }
 };
 
-// --- Local History & Pending Uploads ---
+// --- Local History ---
 
 export const getGameLogs = (): GameLog[] => {
   try {
@@ -63,19 +63,6 @@ export const getGameLogs = (): GameLog[] => {
   } catch {
     return [];
   }
-};
-
-export const getPendingUploads = (): GameLog[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.PENDING_UPLOADS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-export const clearPendingUploads = () => {
-    localStorage.removeItem(STORAGE_KEYS.PENDING_UPLOADS);
 };
 
 export const saveGameLog = (roomId: string, result: CalculationResult, hostName: string) => {
@@ -90,7 +77,7 @@ export const saveGameLog = (roomId: string, result: CalculationResult, hostName:
       }))
     };
 
-    // 1. Save to Local View History
+    // Save to Local View History
     const logs = getGameLogs();
     const existingIndex = logs.findIndex(l => l.roomId === roomId);
     if (existingIndex !== -1) {
@@ -99,18 +86,8 @@ export const saveGameLog = (roomId: string, result: CalculationResult, hostName:
       logs.unshift(newEntry);
     }
     localStorage.setItem(STORAGE_KEYS.GAME_RESULTS, JSON.stringify(logs));
-
-    // 2. Save to Pending Queue (for Cloud Sync)
-    // We only queue if it's a new finalization or update.
-    // To prevent duplicates in DB, we'll handle uniqueness in the sync logic,
-    // but here we just push to queue.
-    const pending = getPendingUploads();
-    // Remove old pending for same room if exists to update it
-    const filteredPending = pending.filter(p => p.roomId !== roomId);
-    filteredPending.push(newEntry);
-    localStorage.setItem(STORAGE_KEYS.PENDING_UPLOADS, JSON.stringify(filteredPending));
     
-    // Update known players
+    // Update known players locally
     addKnownPlayers(result.players.map(p => p.name));
     
   } catch (e) {

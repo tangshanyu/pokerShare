@@ -1,12 +1,12 @@
+
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
-import { RoomProvider, hasApiKey, useStorage, useMutation } from './liveblocks.config';
+import { RoomProvider, hasApiKey } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 import { RoomManager } from './components/RoomManager';
-import { ReportsScreen } from './components/ReportsScreen';
-import { getKnownPlayers } from './utils/storage';
+import { getKnownPlayers, addKnownPlayers } from './utils/storage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,9 +14,6 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-
-// Constant ID for the shared database room
-const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
 
 // --- State Management for Lobby/User ---
 
@@ -84,7 +81,7 @@ const getDefaultGameTitle = () => {
     return `${d.getMonth() + 1}/${d.getDate()} Poker Night`;
 }
 
-// --- User Selector Component (Connected to Global DB) ---
+// --- User Selector Component (Local Storage Only) ---
 
 interface UserSelectorProps {
   name: string;
@@ -92,57 +89,28 @@ interface UserSelectorProps {
 }
 
 const UserSelector = ({ name, setName }: UserSelectorProps) => {
-  // useStorage returns a plain array (snapshot)
-  const cloudDirectory = useStorage((root) => root.playerDirectory);
+  // Use local storage instead of global DB
+  const [directoryList, setDirectoryList] = useState<string[]>([]);
   
   // Default to selection mode (False = Dropdown, True = Input)
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newNameInput, setNewNameInput] = useState('');
-  
-  // Loading & Animation State
-  const [isDataReady, setIsDataReady] = useState(false);
   const [shouldFadeIn, setShouldFadeIn] = useState(false);
 
-  // Mutation to add name to cloud
-  const addToCloud = useMutation(({ storage }, newName: string) => {
-    let list = storage.get("playerDirectory");
-    if (!list) {
-      list = new LiveList<string>([]);
-      storage.set("playerDirectory", list);
-    }
-    if (!list.toArray().includes(newName)) {
-      list.push(newName);
-    }
-  }, []);
-
-  const directoryList = Array.isArray(cloudDirectory) ? [...cloudDirectory].sort() : [];
-
-  // Initial Validation: Ensure the name in localStorage actually exists in DB
   useEffect(() => {
-    // Only run this logic once when data first becomes available
-    if (!isDataReady && cloudDirectory !== undefined) {
-      if (name) {
-        // If current name is NOT in the list, clear it to force selection
-        // We only enforce this on initial load to prevent using stale localstorage names
-        if (directoryList.length > 0 && !directoryList.includes(name)) {
-           setName(''); 
-        }
-      }
-      
-      // Mark as ready
-      setIsDataReady(true);
-      
-      // Trigger Fade In animation shortly after render
-      setTimeout(() => setShouldFadeIn(true), 50);
-    }
-  }, [cloudDirectory, isDataReady, directoryList, name, setName]);
+    // Load known players from local storage on mount
+    const players = getKnownPlayers();
+    setDirectoryList(players);
+    setTimeout(() => setShouldFadeIn(true), 50);
+  }, []);
 
   const handleConfirmNewUser = () => {
       const trimmed = newNameInput.trim();
       if (!trimmed) return;
 
-      // 1. Write to DB immediately
-      addToCloud(trimmed);
+      // 1. Save to Local Storage immediately
+      addKnownPlayers([trimmed]);
+      setDirectoryList(getKnownPlayers());
       
       // 2. Select it locally
       setName(trimmed);
@@ -151,19 +119,6 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
       setIsCreatingNew(false);
       setNewNameInput('');
   };
-
-  // --- RENDER LOADING SKELETON ---
-  if (!isDataReady) {
-     return (
-       <div className="space-y-3">
-          <div className="flex justify-between items-center mb-1">
-             <div className="h-3 w-24 bg-white/10 rounded animate-pulse"></div>
-             <div className="h-3 w-32 bg-white/5 rounded animate-pulse"></div>
-          </div>
-          <div className="h-[52px] w-full bg-white/5 rounded-xl animate-pulse border border-white/5"></div>
-       </div>
-     );
-  }
 
   // --- RENDER CONTENT WITH FADE IN ---
   return (
@@ -247,11 +202,9 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
 // Component: Lobby Screen (The New Home)
 const LobbyScreen = ({ 
     onCreateClick, 
-    onReportsClick, 
     openManager 
 }: { 
     onCreateClick: () => void, 
-    onReportsClick: () => void,
     openManager: () => void
 }) => {
     const [history, setHistory] = useState<any[]>([]);
@@ -281,9 +234,9 @@ const LobbyScreen = ({
              </div>
 
              {/* Split Action Cards */}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mb-10">
+             <div className="grid grid-cols-1 gap-6 w-full mb-10 max-w-md">
                  
-                 {/* Left: Create Game */}
+                 {/* Create Game */}
                  <button 
                     onClick={onCreateClick}
                     className="group relative h-48 md:h-64 glass-panel rounded-3xl p-8 flex flex-col justify-between overflow-hidden hover:border-poker-green/50 transition-all duration-300 hover:scale-[1.02]"
@@ -299,26 +252,6 @@ const LobbyScreen = ({
                      <div className="relative z-10 self-end">
                          <span className="text-poker-green text-sm font-bold uppercase tracking-wider flex items-center group-hover:translate-x-2 transition-transform">
                              Get Started <span className="ml-2">→</span>
-                         </span>
-                     </div>
-                 </button>
-
-                 {/* Right: View Records */}
-                 <button 
-                    onClick={onReportsClick}
-                    className="group relative h-48 md:h-64 glass-panel rounded-3xl p-8 flex flex-col justify-between overflow-hidden hover:border-poker-gold/50 transition-all duration-300 hover:scale-[1.02]"
-                 >
-                     <div className="absolute inset-0 bg-gradient-to-br from-poker-gold/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                     <div className="relative z-10 text-left">
-                         <div className="w-12 h-12 rounded-full bg-poker-gold text-black flex items-center justify-center mb-4 text-2xl font-bold shadow-lg shadow-poker-gold/20">
-                             📊
-                         </div>
-                         <h2 className="text-3xl font-bold text-white mb-2">查看戰績</h2>
-                         <p className="text-gray-400 text-sm">View Analytics</p>
-                     </div>
-                     <div className="relative z-10 self-end">
-                         <span className="text-poker-gold text-sm font-bold uppercase tracking-wider flex items-center group-hover:translate-x-2 transition-transform">
-                             History <span className="ml-2">→</span>
                          </span>
                      </div>
                  </button>
@@ -355,7 +288,7 @@ const LobbyScreen = ({
     );
 }
 
-// Component: Create Room Form (Modified with Back button and Game Title)
+// Component: Create Room Form
 const CreateRoomForm = ({ 
     onJoin, 
     onBack 
@@ -484,7 +417,7 @@ const CreateRoomForm = ({
 
             <hr className="border-white/5" />
 
-            {/* User Selector with DB Sync */}
+            {/* User Selector */}
             <UserSelector 
               name={name} 
               setName={setName} 
@@ -600,15 +533,10 @@ const Loading = ({ message = "Loading..." }: { message?: string }) => (
 );
 
 // --- Wrapper Components to Provide Global DB Context ---
+// Note: We removed the Global DB wrapper, so these are just layout wrappers now
 
 const MainMenuWrapper = (props: any) => (
   <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
-     <RoomProvider 
-        id={GLOBAL_DB_ROOM_ID} 
-        initialPresence={{}} 
-        initialStorage={{ playerDirectory: new LiveList([]) }}
-      >
-        <ClientSideSuspense fallback={<Loading message="Init Lobby..." />}>
            {props.view === 'create' ? (
                 <CreateRoomForm 
                     onJoin={props.onJoin} 
@@ -617,38 +545,15 @@ const MainMenuWrapper = (props: any) => (
            ) : (
                <LobbyScreen 
                     onCreateClick={() => props.setView('create')}
-                    onReportsClick={props.onOpenReports}
                     openManager={props.openManager}
                />
            )}
-        </ClientSideSuspense>
-      </RoomProvider>
   </div>
-);
-
-const ReportsPage = ({ onBack }: { onBack: () => void }) => (
-    <RoomProvider 
-       id={GLOBAL_DB_ROOM_ID} 
-       initialPresence={{}} 
-       initialStorage={{ gameLogs: new LiveList([]) }}
-     >
-       <ClientSideSuspense fallback={<Loading message="Loading Reports..." />}>
-          <ReportsScreen onBack={onBack} />
-       </ClientSideSuspense>
-     </RoomProvider>
 );
 
 const JoinRoomScreen = (props: any) => (
   <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans relative">
-     <RoomProvider 
-        id={GLOBAL_DB_ROOM_ID} 
-        initialPresence={{}} 
-        initialStorage={{ playerDirectory: new LiveList([]) }}
-      >
-        <ClientSideSuspense fallback={<Loading message="Syncing DB..." />}>
            <JoinRoomForm {...props} />
-        </ClientSideSuspense>
-      </RoomProvider>
   </div>
 );
 
@@ -672,14 +577,9 @@ const Root = () => {
   const [isLobbyManagerOpen, setIsLobbyManagerOpen] = useState(false);
   
   // Navigation State for Home
-  const [homeView, setHomeView] = useState<'lobby' | 'create' | 'reports'>('lobby');
+  const [homeView, setHomeView] = useState<'lobby' | 'create'>('lobby');
 
   if (!hasApiKey) return <MissingKeyScreen />;
-
-  // 0. Reports View
-  if (homeView === 'reports') {
-      return <ReportsPage onBack={() => setHomeView('lobby')} />;
-  }
 
   // 1. If no room ID in URL, show Main Menu (Lobby or Create)
   if (!roomId) {
@@ -696,7 +596,6 @@ const Root = () => {
             window.history.pushState({}, '', `?room=${newRoomId}`);
           }}
           openManager={() => setIsLobbyManagerOpen(true)}
-          onOpenReports={() => setHomeView('reports')}
         />
         <RoomManager 
           isOpen={isLobbyManagerOpen}

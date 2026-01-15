@@ -3,7 +3,6 @@ import { Player, CalculationResult } from './types';
 import { calculateSettlement } from './utils/pokerLogic';
 import { saveGameLog } from './utils/storage';
 import { ImportModal } from './components/ImportModal';
-import { PlayerDirectoryModal } from './components/PlayerDirectoryModal';
 import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
@@ -29,478 +28,294 @@ const ChatIcon = () => (
 const SettingsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
 );
-const DirectoryIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-);
 
 // Styled Loading Component
 const LoadingBlock = ({ message = "Loading..." }: { message?: string }) => (
-  <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#0f0f13]/90 backdrop-blur-md animate-fade-in transition-all duration-300">
-    <div className="relative mb-6">
-       {/* Glow effect */}
-       <div className="absolute inset-0 bg-poker-green/20 blur-xl rounded-full animate-pulse"></div>
-       
-       {/* Spinner */}
-       <div className="relative w-16 h-16">
-          <div className="absolute inset-0 rounded-full border-4 border-white/5"></div>
-          <div className="absolute inset-0 rounded-full border-4 border-t-poker-green border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-       </div>
-       
-       {/* Center Icon */}
-       <div className="absolute inset-0 flex items-center justify-center text-2xl">
-          🎲
-       </div>
-    </div>
-    
-    <div className="flex flex-col items-center space-y-2">
-       <span className="text-white font-bold text-lg tracking-widest uppercase animate-pulse font-mono">{message}</span>
-       <div className="flex space-x-1">
-          <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-          <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-          <div className="w-1.5 h-1.5 bg-poker-green rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-       </div>
-    </div>
+  <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#0f0f13] text-white">
+      <div className="animate-spin h-10 w-10 border-4 border-poker-green border-t-transparent rounded-full mb-4"></div>
+      <div className="font-mono animate-pulse">{message}</div>
   </div>
 );
 
-export const App = ({ currentUser }: { currentUser: { id: string, name: string, isHost: boolean, initialSettings?: any } }) => {
+export const App = ({ currentUser }: { currentUser: { id: string; name: string; isHost: boolean } }) => {
+  // Liveblocks Storage
   const players = useStorage((root) => root.players);
   const settings = useStorage((root) => root.settings);
   const messages = useStorage((root) => root.messages);
   const others = useOthers();
-  const status = useStatus(); // Check connection status
-  
+  const status = useStatus();
+
   // Local UI State
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSettlementOpen, setIsSettlementOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [isDirectoryOpen, setIsDirectoryOpen] = useState(false);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  
-  // Handling global settlement state vs local dismissal
-  const [isLocalSettlementDismissed, setIsLocalSettlementDismissed] = useState(false);
-  
-  // -- Mutations --
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [calculationResult, setCalculationResult] = useState<CalculationResult | null>(null);
 
-  const addPlayer = useMutation(({ storage }, name: string, isAutoJoin = false) => {
+  // Mutations
+  const addPlayer = useMutation(({ storage }, name: string) => {
     const playersList = storage.get('players');
     if (!playersList) return;
     
-    // Dupe check
-    if (playersList.toArray().some(p => p.name === name)) {
-        if (!isAutoJoin) alert("此玩家已在列表中 (Player already exists)");
-        return;
-    }
+    // Check if name exists
+    const exists = playersList.some((p) => p.name === name);
+    if (exists) return; // Prevent duplicates
 
     playersList.push({
       id: Date.now().toString() + Math.random().toString().slice(2),
-      name: name,
+      name,
       buyInCount: 1,
       finalChips: 0
     });
   }, []);
 
-  const updatePlayer = useMutation(({ storage }, id: string, field: string, value: any) => {
+  const updatePlayer = useMutation(({ storage }, id: string, data: Partial<Player>) => {
     const playersList = storage.get('players');
-    const index = playersList?.findIndex((p) => p.id === id);
-    if (index !== undefined && index !== -1 && playersList) {
-      const p = playersList.get(index);
-      
-      // Strict validation for chips to ensure Calculation always gets numbers
-      if (field === 'finalChips') {
-          // Allow empty string for better typing experience, but store as 0 or number
-          // If value is string and empty, we might want to store 0, but UI handles string input.
-          // Let's store number in DB.
-          const num = Number(value);
-          value = isNaN(num) ? 0 : Math.max(0, num);
+    if (!playersList) return;
+    
+    const index = playersList.findIndex((p) => p.id === id);
+    if (index !== -1) {
+      const current = playersList.get(index);
+      if (current) {
+        playersList.set(index, { ...current, ...data });
       }
-      
-      playersList.set(index, { ...p, [field]: value });
     }
   }, []);
 
   const removePlayer = useMutation(({ storage }, id: string) => {
     const playersList = storage.get('players');
-    const index = playersList?.findIndex((p) => p.id === id);
-    if (index !== undefined && index !== -1 && playersList) {
+    if (!playersList) return;
+    
+    const index = playersList.findIndex((p) => p.id === id);
+    if (index !== -1) {
       playersList.delete(index);
     }
   }, []);
 
-  const importPlayers = useMutation(({ storage }, newPlayers: Player[]) => {
-    const playersList = storage.get('players');
-    if (playersList) {
-       newPlayers.forEach(p => playersList.push(p));
-    }
-  }, []);
-
   const updateSettings = useMutation(({ storage }, newSettings: Partial<any>) => {
-    const s = storage.get('settings');
-    if (s) {
-      s.update(newSettings);
+    const settingsObj = storage.get('settings');
+    if (settingsObj) {
+      Object.keys(newSettings).forEach(key => {
+        settingsObj.set(key, newSettings[key]);
+      });
     }
   }, []);
 
-  // -- Effects --
+  const importPlayers = useMutation(({ storage }, importedPlayers: Player[]) => {
+    const playersList = storage.get('players');
+    if (!playersList) return;
 
-  // Auto-join logic
+    importedPlayers.forEach(p => {
+        const exists = playersList.some(ex => ex.name === p.name);
+        if (!exists) {
+            playersList.push(p);
+        }
+    });
+  }, []);
+
+  // Effects
   useEffect(() => {
-    if (status === 'connected' && players && currentUser.name) {
-      const exists = players.some(p => p.name === currentUser.name);
-      if (!exists) {
-        addPlayer(currentUser.name, true);
-      }
-    }
-  }, [status, players, currentUser.name, addPlayer]);
-
-  // Calculations
-  const calculation = useMemo(() => {
     if (players && settings) {
-      return calculateSettlement(players, settings);
+      const result = calculateSettlement(players, settings);
+      setCalculationResult(result);
     }
-    return null;
   }, [players, settings]);
 
-  // Sync Local Dismissal state: If host opens settlement again, re-open for local user
-  useEffect(() => {
-      if (settings?.showSettlement) {
-          setIsLocalSettlementDismissed(false);
-      }
-  }, [settings?.showSettlement]);
-
-  // -- Handlers --
-
-  const handleOpenSettlement = () => {
-    if (!calculation || !settings) return;
-    
-    const roomId = new URLSearchParams(window.location.search).get("room");
-    
-    // Save log
-    if (roomId && calculation.isBalanced) {
-        saveGameLog(roomId, calculation, currentUser.name);
-    }
-
-    // Trigger global settlement
-    updateSettings({ showSettlement: true, isLocked: true });
-  };
-
-  const handleCloseSettlement = () => {
-      if (currentUser.isHost) {
-          // Host closes for everyone
-          if (confirm("關閉結算視窗將會對所有人關閉。\n(Closing settlement will close it for everyone.)")) {
-              updateSettings({ showSettlement: false });
-          }
-      } else {
-          // Guest just dismisses locally
-          setIsLocalSettlementDismissed(true);
-      }
-  };
-
-  const handleGoHome = () => {
-      // Clear all query params to go back to lobby
-      window.location.href = window.location.origin;
-  };
-
-  const existingPlayerNames = players ? players.map(p => p.name) : [];
-
-  // Determine modal visibility: Global flag AND not locally dismissed
-  const isSettlementVisible = (settings?.showSettlement === true) && !isLocalSettlementDismissed;
-
-  // Loading state (Block UI)
-  if (!players || !settings) {
-    return <LoadingBlock message="Joining Room" />;
+  if (status === "loading" || !players || !settings) {
+    return <LoadingBlock message="Syncing with Room..." />;
   }
 
+  // Derived Values
+  const unreadMessages = 0; // Simplified for now
   const isLocked = settings.isLocked;
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col pb-32 relative overflow-hidden">
+    <div className="min-h-screen bg-[#0f0f13] text-white font-sans pb-20 md:pb-0">
       
-      {/* Reconnecting Overlay */}
-      {status === 'reconnecting' && <LoadingBlock message="Reconnecting" />}
-
-      {/* Top Bar - Tools & Settings */}
-      <div className="px-4 pt-6 pb-2 flex justify-between items-center z-10">
-        <div 
-          onClick={handleGoHome} 
-          className="cursor-pointer hover:opacity-80 transition-opacity"
-          title="Return to Home"
-        >
-           {settings.gameTitle ? (
-               <div className="flex flex-col">
-                   <h1 className="text-xl font-bold text-white truncate max-w-[200px]">
-                     {settings.gameTitle}
-                   </h1>
-                   <div className="text-[10px] text-gray-400 font-mono tracking-wider">
-                     Poker<span className="text-poker-green">Pro</span>
-                   </div>
-               </div>
-           ) : (
-               <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-                 Poker<span className="text-poker-green">Pro</span>
-               </h1>
-           )}
-           
-           <div className="flex items-center space-x-2 text-[10px] text-gray-400 mt-1">
-              <span className="bg-white/5 px-2 py-0.5 rounded border border-white/5 font-mono">#{new URLSearchParams(window.location.search).get("room")}</span>
-              <span className="flex items-center text-green-400">
-                 <span className={`w-1.5 h-1.5 rounded-full mr-1 ${status === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
-                 {others.length + 1}
-              </span>
-           </div>
+      {/* Navbar */}
+      <nav className="fixed top-0 left-0 right-0 z-40 bg-[#0f0f13]/90 backdrop-blur-md border-b border-white/10 h-16 flex items-center justify-between px-4">
+        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setIsManagerOpen(true)}>
+          <div className="w-8 h-8 bg-poker-green rounded-lg flex items-center justify-center text-black font-bold text-lg">
+            P
+          </div>
+          <div className="flex flex-col">
+             <span className="font-bold text-sm tracking-wide">{settings.gameTitle || 'Poker Night'}</span>
+             <span className="text-[10px] text-gray-500 font-mono">
+               {players.length} Players • {others.length + 1} Online
+             </span>
+          </div>
         </div>
-        <div className="flex space-x-2">
-            {!isLocked && currentUser.isHost && (
-                <>
-                    <button 
-                    onClick={() => setIsImportOpen(true)}
-                    className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5 text-gray-400 hover:text-white"
-                    title="Import"
-                    >
-                    <DocsIcon />
-                    </button>
-                    <button 
-                    onClick={() => setIsDirectoryOpen(true)}
-                    className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5 text-gray-400 hover:text-white"
-                    title="Directory"
-                    >
-                    <DirectoryIcon />
-                    </button>
-                </>
-            )}
+
+        <div className="flex items-center space-x-2">
             <button 
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5 text-gray-400 hover:text-white"
-            title="Settings"
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className="p-2 rounded-full hover:bg-white/10 relative transition-colors"
             >
-            <SettingsIcon />
+                <ChatIcon />
+                {unreadMessages > 0 && (
+                    <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0f0f13]"></span>
+                )}
+            </button>
+            <button 
+                onClick={() => setIsSettlementOpen(true)}
+                className="bg-poker-green hover:bg-emerald-400 text-black px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-poker-green/20 transition-all transform active:scale-95"
+            >
+                結算 (Settle)
             </button>
         </div>
-      </div>
+      </nav>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 custom-scrollbar z-10">
-        
-        {/* Status Message */}
-        {isLocked && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-2 flex items-center justify-center">
-                 <span className="text-red-400 text-xs font-bold uppercase tracking-wider">🚫 Room Locked by Host</span>
-            </div>
-        )}
-
-        {/* Players List */}
-        {players.map((player) => {
-          // Permissions Logic
-          // Host can edit ANYONE. Regular user can ONLY edit themselves.
-          const isMe = player.name === currentUser.name;
-          const canEdit = currentUser.isHost || isMe;
-          const canDelete = currentUser.isHost || isMe;
-          
-          return (
-          <div key={player.id} className={`glass-panel rounded-2xl p-4 transition-all hover:border-white/20 relative ${!canEdit ? 'opacity-80' : ''}`}>
-            
-            {/* Identity Badges */}
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center border border-white/10 shadow-inner mr-3 relative">
-                  <span className="font-bold text-lg text-gray-300">{player.name.charAt(0)}</span>
-                  {/* Host Badge */}
-                  {/* Note: We don't track who is host in the Player object, but we know who WE are. 
-                      Since we can't easily know if *another* player is host without storing it, 
-                      we just mark ourselves if we are host. */}
-                  {currentUser.isHost && isMe && (
-                      <div className="absolute -top-1 -right-1 bg-poker-gold text-black text-[8px] font-bold px-1 rounded-full border border-black" title="Host">H</div>
-                  )}
-                </div>
-                <div>
-                   <div className="font-bold text-lg flex items-center">
-                       {player.name}
-                       {isMe && <span className="ml-2 text-[10px] bg-white/10 px-1.5 py-0.5 rounded text-gray-400">(You)</span>}
-                   </div>
-                   {calculation && (
-                      <div className={`text-xs font-mono font-bold ${
-                        (player.netAmount || 0) >= 0 ? 'text-poker-green' : 'text-poker-red'
-                      }`}>
-                         {player.netAmount && player.netAmount > 0 ? '+' : ''}{player.netAmount || 0}
-                      </div>
-                   )}
-                </div>
-              </div>
-              
-              {!isLocked && canDelete && (
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const msg = isMe 
-                        ? "Are you sure you want to leave the game?" 
-                        : `Remove ${player.name} from the game?`;
-                    if (confirm(msg)) removePlayer(player.id);
-                  }}
-                  className="text-gray-600 hover:text-red-500 transition-colors p-2 -mr-2"
-                >
-                  <TrashIcon />
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-               {/* Buy-ins Control */}
-               <div className={`bg-black/20 rounded-xl p-2 flex items-center justify-between border border-white/5 ${!canEdit ? 'opacity-40 pointer-events-none' : ''}`}>
-                  <button 
-                    disabled={isLocked || !canEdit}
-                    onClick={() => updatePlayer(player.id, 'buyInCount', Math.max(0, player.buyInCount - 1))}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    -
-                  </button>
-                  <div className="flex flex-col items-center">
-                     <span className="text-[10px] text-gray-500 uppercase font-bold">Buy-ins</span>
-                     <span className="font-mono text-lg font-bold text-white">{player.buyInCount}</span>
-                  </div>
-                  <button 
-                    disabled={isLocked || !canEdit}
-                    onClick={() => updatePlayer(player.id, 'buyInCount', player.buyInCount + 1)}
-                    className="w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-lg text-poker-green disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    +
-                  </button>
-               </div>
-
-               {/* Chips Input */}
-               <div className={`bg-black/20 rounded-xl p-2 border border-white/5 relative ${!canEdit ? 'opacity-40 pointer-events-none' : ''}`}>
-                  <div className="absolute top-1 left-0 w-full text-center text-[10px] text-gray-500 uppercase font-bold pointer-events-none">Chips</div>
-                  <input 
-                    type="number"
-                    inputMode="numeric"
-                    disabled={isLocked || !canEdit}
-                    value={player.finalChips === 0 ? '' : player.finalChips}
-                    onChange={(e) => updatePlayer(player.id, 'finalChips', e.target.value)}
-                    placeholder="0"
-                    onFocus={(e) => e.target.select()}
-                    className="w-full h-full bg-transparent text-center font-mono text-xl font-bold text-poker-gold focus:outline-none pt-3 disabled:cursor-not-allowed"
-                  />
-               </div>
-            </div>
-          </div>
-          );
-        })}
-        
-        {players.length === 0 && (
-           <div className="text-center py-10 text-gray-500 opacity-60">
-              <div className="mb-2 text-4xl">🎲</div>
-              <p>No players yet.</p>
-              {currentUser.isHost && <p className="text-xs mt-1">Click "+" to add players.</p>}
-           </div>
-        )}
-      </div>
-
-      {/* Floating Controls (Fixed Bottom) */}
-      <div className="fixed bottom-6 left-6 right-6 z-30 flex items-end justify-between pointer-events-none">
-          
-          {/* Left: Chat */}
-          <div className="pointer-events-auto relative">
-              <button 
-                onClick={() => setIsChatOpen(!isChatOpen)} 
-                className="w-12 h-12 bg-[#1a1a20]/90 border border-white/10 rounded-full flex items-center justify-center shadow-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all"
-              >
-                  <ChatIcon />
-              </button>
-              {messages && messages.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-[#0f0f13]"></span>
-              )}
-          </div>
-
-          {/* Center: Settlement (Host Only or Re-Open) */}
-          <div className="pointer-events-auto flex flex-col items-center space-y-2">
-              {currentUser.isHost ? (
-                  <button 
-                    onClick={handleOpenSettlement}
-                    className="px-8 py-3 bg-gradient-to-r from-poker-gold to-orange-500 text-black font-bold rounded-full shadow-[0_0_20px_rgba(255,165,2,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center space-x-2"
-                  >
-                      <ShareIcon />
-                      <span>{settings.showSettlement ? '已開啟結算 (Open)' : '結算 (Settle)'}</span>
-                  </button>
-              ) : (
-                  // If settlement is active but dismissed by guest, allow them to re-open it
-                  settings.showSettlement && isLocalSettlementDismissed && (
-                      <button 
-                        onClick={() => setIsLocalSettlementDismissed(false)}
-                        className="px-6 py-2 bg-poker-gold/20 text-poker-gold border border-poker-gold/50 font-bold rounded-full backdrop-blur-md shadow-lg flex items-center space-x-2"
-                      >
-                          <ShareIcon />
-                          <span>查看結算 (View)</span>
-                      </button>
-                  )
-              )}
-          </div>
-
-          {/* Right: Add Player - RESTRICTED TO HOST */}
-          <div className="pointer-events-auto">
-             {!isLocked && currentUser.isHost && (
-                <button 
+      <main className="pt-20 px-4 max-w-5xl mx-auto">
+         
+         {/* Info Banner */}
+         <div className="flex justify-between items-end mb-6">
+             <div>
+                <h1 className="text-2xl font-bold mb-1">記分板 (Scoreboard)</h1>
+                <p className="text-gray-400 text-xs">
+                    Buy-in: <span className="text-white font-mono">${settings.cashPerBuyIn}</span> = <span className="text-white font-mono">{settings.chipPerBuyIn}</span> Chips
+                </p>
+             </div>
+             <div className="flex space-x-2">
+                 <button 
+                    onClick={() => setIsImportOpen(true)}
+                    className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                    title="Import Data"
+                 >
+                     <DocsIcon />
+                 </button>
+                 <button 
                     onClick={() => setIsAddPlayerOpen(true)}
-                    className="w-14 h-14 bg-gradient-to-tr from-poker-green to-emerald-500 text-black rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,220,130,0.4)] hover:scale-110 active:scale-95 transition-all"
-                >
-                    <PlusIcon />
-                </button>
-             )}
-          </div>
-      </div>
+                    className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-600/20 transition-all"
+                    disabled={isLocked}
+                 >
+                     <PlusIcon /> <span>Player</span>
+                 </button>
+             </div>
+         </div>
 
-      {/* Balance Warning Overlay */}
-      {calculation && Math.abs(calculation.totalBalance) > 5 && !isSettlementVisible && (
-            <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-20 pointer-events-none animate-fade-in-up">
-                <div className="glass-panel bg-red-500/20 border-red-500/40 text-red-100 px-4 py-1.5 rounded-full text-center text-xs font-bold shadow-lg backdrop-blur-md flex items-center space-x-2">
-                    <span>⚠️ Balance: {calculation.totalBalance > 0 ? '+' : ''}{calculation.totalBalance}</span>
-                    {currentUser.isHost && <span className="text-[10px] opacity-70">(Tap + to fix)</span>}
-                </div>
-            </div>
-      )}
+         {/* Player List */}
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-24">
+             {players.map((player) => {
+                 const currentNet = calculationResult?.players.find(p => p.id === player.id)?.netAmount || 0;
+                 return (
+                     <div key={player.id} className="glass-panel p-5 rounded-2xl border border-white/5 hover:border-white/10 transition-all group relative">
+                         <div className="flex justify-between items-start mb-4">
+                             <div className="flex items-center space-x-3">
+                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-white font-bold text-lg border border-white/10 shadow-inner">
+                                     {player.name.charAt(0).toUpperCase()}
+                                 </div>
+                                 <div>
+                                     <div className="font-bold text-white leading-tight">{player.name}</div>
+                                     <div className={`text-xs font-mono font-bold ${currentNet >= 0 ? 'text-poker-green' : 'text-red-400'}`}>
+                                         {currentNet >= 0 ? '+' : ''}{currentNet}
+                                     </div>
+                                 </div>
+                             </div>
+                             {!isLocked && (
+                                 <button 
+                                    onClick={() => {
+                                        if (confirm(`Remove ${player.name}?`)) removePlayer(player.id);
+                                    }}
+                                    className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                 >
+                                     <TrashIcon />
+                                 </button>
+                             )}
+                         </div>
+
+                         <div className="space-y-3">
+                             {/* Buy-ins Control */}
+                             <div className="flex items-center justify-between bg-black/20 p-2 rounded-xl">
+                                 <span className="text-xs text-gray-500 font-bold uppercase ml-1">Buy-ins</span>
+                                 <div className="flex items-center space-x-3">
+                                     <button 
+                                        onClick={() => updatePlayer(player.id, { buyInCount: Math.max(0, player.buyInCount - 1) })}
+                                        disabled={isLocked}
+                                        className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white flex items-center justify-center text-lg disabled:opacity-30 transition-colors"
+                                     >
+                                         -
+                                     </button>
+                                     <span className="font-mono text-lg w-6 text-center">{player.buyInCount}</span>
+                                     <button 
+                                        onClick={() => updatePlayer(player.id, { buyInCount: player.buyInCount + 1 })}
+                                        disabled={isLocked}
+                                        className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white flex items-center justify-center text-lg disabled:opacity-30 transition-colors"
+                                     >
+                                         +
+                                     </button>
+                                 </div>
+                             </div>
+
+                             {/* Chips Input */}
+                             <div className="bg-black/20 p-2 rounded-xl">
+                                 <div className="flex justify-between mb-1 ml-1">
+                                     <span className="text-xs text-gray-500 font-bold uppercase">Final Chips</span>
+                                 </div>
+                                 <input 
+                                     type="number"
+                                     value={player.finalChips}
+                                     onChange={(e) => updatePlayer(player.id, { finalChips: Number(e.target.value) })}
+                                     disabled={isLocked}
+                                     className="w-full bg-transparent text-right font-mono text-xl font-bold text-poker-gold outline-none placeholder-gray-700"
+                                     placeholder="0"
+                                     onFocus={(e) => e.target.select()}
+                                 />
+                             </div>
+                         </div>
+                     </div>
+                 );
+             })}
+
+             {players.length === 0 && (
+                 <div className="col-span-full py-12 flex flex-col items-center justify-center text-gray-500 border-2 border-dashed border-white/5 rounded-3xl">
+                     <p className="mb-4">No players yet.</p>
+                     <button 
+                        onClick={() => setIsAddPlayerOpen(true)}
+                        className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white transition-colors"
+                     >
+                         Add your first player
+                     </button>
+                 </div>
+             )}
+         </div>
+      </main>
 
       {/* Modals */}
-      <RoomManager 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        updateSettings={(s) => updateSettings(s)}
-        isHost={currentUser.isHost}
-      />
-
       <ImportModal 
         isOpen={isImportOpen} 
         onClose={() => setIsImportOpen(false)} 
-        onImport={(p) => importPlayers(p)}
+        onImport={(p) => importPlayers(p)} 
       />
-
-      <PlayerDirectoryModal
-         isOpen={isDirectoryOpen}
-         onClose={() => setIsDirectoryOpen(false)}
-         onSelect={(names) => {
-             names.forEach(name => addPlayer(name));
-         }}
-         existingNames={existingPlayerNames}
-      />
-
-      <AddPlayerModal
-        isOpen={isAddPlayerOpen}
-        onClose={() => setIsAddPlayerOpen(false)}
+      
+      <AddPlayerModal 
+        isOpen={isAddPlayerOpen} 
+        onClose={() => setIsAddPlayerOpen(false)} 
         onAdd={(name) => addPlayer(name)}
-        existingNames={existingPlayerNames}
+        existingNames={players.map(p => p.name)}
       />
 
-      <ChatRoom 
-         currentUser={currentUser}
-         isOpen={isChatOpen}
-         onClose={() => setIsChatOpen(false)}
-      />
-
-      <SettlementModal
-        isOpen={isSettlementVisible}
-        onClose={handleCloseSettlement}
-        result={calculation}
+      <SettlementModal 
+        isOpen={isSettlementOpen} 
+        onClose={() => setIsSettlementOpen(false)} 
+        result={calculationResult}
         settings={settings}
       />
 
+      <RoomManager 
+        isOpen={isManagerOpen}
+        onClose={() => setIsManagerOpen(false)}
+        settings={settings}
+        updateSettings={updateSettings}
+        isHost={currentUser.isHost}
+      />
+
+      <ChatRoom 
+        isOpen={isChatOpen} 
+        onClose={() => setIsChatOpen(false)} 
+        currentUser={currentUser}
+      />
     </div>
   );
 };

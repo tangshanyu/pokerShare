@@ -1,11 +1,6 @@
+
 import React, { useState } from 'react';
 import { Player } from '../types';
-import { RoomProvider, useMutation } from '../liveblocks.config';
-import { ClientSideSuspense } from "@liveblocks/react";
-import { LiveList } from '@liveblocks/client';
-
-// Constant ID for the shared database room
-const GLOBAL_DB_ROOM_ID = "poker-pro-global-database-v1";
 
 interface ImportModalProps {
   isOpen: boolean;
@@ -15,27 +10,10 @@ interface ImportModalProps {
 
 const ImportModalInner = ({ onClose, onImport }: Omit<ImportModalProps, 'isOpen'>) => {
     const [text, setText] = useState('');
-    
-    // Connect to Global DB to sync names
-    const addToDirectory = useMutation(({ storage }, names: string[]) => {
-        let list = storage.get("playerDirectory");
-        if (!list) {
-            list = new LiveList<string>([]);
-            storage.set("playerDirectory", list);
-        }
-        
-        const currentList = list.toArray();
-        names.forEach(name => {
-            if (!currentList.includes(name)) {
-                list.push(name);
-            }
-        });
-    }, []);
 
     const handleImport = () => {
         const lines = text.trim().split('\n');
         const newPlayers: Player[] = [];
-        const namesToSync: string[] = [];
         const seenNames = new Set<string>();
 
         lines.forEach(line => {
@@ -66,16 +44,10 @@ const ImportModalInner = ({ onClose, onImport }: Omit<ImportModalProps, 'isOpen'
                     buyInCount: buyIns,
                     finalChips: chips
                 });
-                
-                namesToSync.push(name);
             }
         });
 
         if (newPlayers.length > 0) {
-            // 1. Sync names to Global Directory automatically
-            addToDirectory(namesToSync);
-
-            // 2. Add to current game
             onImport(newPlayers);
         }
 
@@ -88,10 +60,6 @@ const ImportModalInner = ({ onClose, onImport }: Omit<ImportModalProps, 'isOpen'
              <div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/5">
                 <div>
                     <h2 className="text-xl font-bold text-white">匯入資料 (Import Data)</h2>
-                    <p className="text-[10px] text-gray-400 flex items-center mt-1">
-                       <span className="w-1.5 h-1.5 bg-poker-green rounded-full mr-1.5"></span>
-                       新玩家將自動加入全域名冊 (Global DB)
-                    </p>
                 </div>
                 <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors text-2xl leading-none">&times;</button>
             </div>
@@ -131,20 +99,7 @@ export const ImportModal: React.FC<ImportModalProps> = (props) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-        <RoomProvider 
-            id={GLOBAL_DB_ROOM_ID} 
-            initialPresence={{}} 
-            initialStorage={{ playerDirectory: new LiveList([]) }}
-        >
-            <ClientSideSuspense fallback={
-                <div className="glass-panel p-8 rounded-2xl flex flex-col items-center bg-[#1a1a20] border border-white/10 shadow-2xl">
-                    <div className="animate-spin h-8 w-8 border-4 border-poker-green border-t-transparent rounded-full mb-4"></div>
-                    <div className="text-white font-bold text-sm">Loading Database...</div>
-                </div>
-            }>
-                <ImportModalInner {...props} />
-            </ClientSideSuspense>
-        </RoomProvider>
+       <ImportModalInner {...props} />
     </div>
   );
 };
