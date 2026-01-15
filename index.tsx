@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
@@ -6,7 +5,6 @@ import { RoomProvider, hasApiKey } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 import { RoomManager } from './components/RoomManager';
-import { getKnownPlayers, addKnownPlayers } from './utils/storage';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -81,7 +79,7 @@ const getDefaultGameTitle = () => {
     return `${d.getMonth() + 1}/${d.getDate()} Poker Night`;
 }
 
-// --- User Selector Component (Local Storage Only) ---
+// --- User Selector Component (Simplified) ---
 
 interface UserSelectorProps {
   name: string;
@@ -89,112 +87,23 @@ interface UserSelectorProps {
 }
 
 const UserSelector = ({ name, setName }: UserSelectorProps) => {
-  // Use local storage instead of global DB
-  const [directoryList, setDirectoryList] = useState<string[]>([]);
-  
-  // Default to selection mode (False = Dropdown, True = Input)
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [newNameInput, setNewNameInput] = useState('');
-  const [shouldFadeIn, setShouldFadeIn] = useState(false);
-
-  useEffect(() => {
-    // Load known players from local storage on mount
-    const players = getKnownPlayers();
-    setDirectoryList(players);
-    setTimeout(() => setShouldFadeIn(true), 50);
-  }, []);
-
-  const handleConfirmNewUser = () => {
-      const trimmed = newNameInput.trim();
-      if (!trimmed) return;
-
-      // 1. Save to Local Storage immediately
-      addKnownPlayers([trimmed]);
-      setDirectoryList(getKnownPlayers());
-      
-      // 2. Select it locally
-      setName(trimmed);
-      
-      // 3. Switch back to dropdown mode
-      setIsCreatingNew(false);
-      setNewNameInput('');
-  };
-
-  // --- RENDER CONTENT WITH FADE IN ---
   return (
-    <div className={`space-y-3 transition-all duration-500 ease-out transform ${shouldFadeIn ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-      <div className="flex justify-between items-center mb-1">
-        <label className={`block text-xs font-bold uppercase transition-colors ${isCreatingNew ? 'text-blue-400' : 'text-poker-green'}`}>
-          {isCreatingNew ? '建立新檔案 (Create New)' : '選擇玩家 (Select Player)'}
-        </label>
-        
-        {!isCreatingNew && (
-            <button 
-            onClick={() => {
-                setIsCreatingNew(true);
-                setNewNameInput('');
-            }}
-            className="text-[10px] text-gray-400 hover:text-white underline decoration-dotted underline-offset-2 transition-colors flex items-center"
-            >
-             <span className="mr-1">+</span> 我是新玩家 (New User)
-            </button>
-        )}
-      </div>
-
-      {isCreatingNew ? (
-        <div className="animate-fade-in bg-black/20 p-3 rounded-xl border border-blue-500/30">
-           <input 
-              type="text" 
-              value={newNameInput}
-              onChange={e => setNewNameInput(e.target.value)}
-              placeholder="輸入您的名字..."
-              className="glass-input w-full rounded-lg py-2 px-3 text-white outline-none focus:border-blue-400 transition-colors mb-3"
-              autoFocus
-              autoComplete="off"
-            />
-            <div className="flex space-x-2">
-                <button 
-                    onClick={() => setIsCreatingNew(false)}
-                    className="flex-1 py-2 text-xs text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-                >
-                    取消 (Cancel)
-                </button>
-                <button 
-                    onClick={handleConfirmNewUser}
-                    disabled={!newNameInput.trim()}
-                    className={`flex-1 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg ${!newNameInput.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                    新增並選取 (Add & Select)
-                </button>
-            </div>
-        </div>
-      ) : (
-        <div className="relative">
-           <select
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={`glass-input w-full rounded-xl py-3 px-4 outline-none focus:border-poker-green transition-colors appearance-none cursor-pointer ${!name ? 'text-gray-400' : 'text-white font-bold'}`}
-           >
-              <option value="" disabled>-- 請選擇您的名字 --</option>
-              {directoryList.map((p) => (
-                <option key={p} value={p} className="bg-[#1a1a20] text-gray-200">
-                  {p}
-                </option>
-              ))}
-           </select>
-           
-           {/* Custom Arrow */}
-           <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-           </div>
-           
-           {directoryList.length === 0 && (
-               <div className="mt-2 text-[10px] text-orange-400">
-                   ⚠️ 名冊是空的，請點擊上方「我是新玩家」來建立檔案。
-               </div>
-           )}
-        </div>
-      )}
+    <div className="space-y-2 animate-fade-in">
+      <label className="block text-xs font-bold uppercase text-poker-green">
+        玩家名稱 (Player Name)
+      </label>
+      <input 
+        type="text" 
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder="Enter your name..."
+        className="glass-input w-full rounded-xl py-4 px-5 text-white text-lg outline-none focus:border-poker-green transition-colors"
+        autoFocus
+        autoComplete="off"
+      />
+      <p className="text-[10px] text-gray-500 text-right">
+        請輸入您在此局遊戲中使用的名稱
+      </p>
     </div>
   );
 };
@@ -335,8 +244,8 @@ const CreateRoomForm = ({
   };
 
   const handleCreate = async () => {
-    // Validation: Name must be selected from the UserSelector
-    if (!name.trim()) return alert("請先選擇一位玩家 (Please select a player)");
+    // Validation: Name must be entered
+    if (!name.trim()) return alert("請輸入玩家名稱 (Please enter a name)");
     
     setIsGenerating(true);
 
@@ -454,7 +363,7 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
   const [clickCount, setClickCount] = useState(0);
 
   const handleJoin = () => {
-    if (!name.trim()) return alert("請先選擇一位玩家 (Please select a player)");
+    if (!name.trim()) return alert("請輸入玩家名稱 (Please enter a name)");
     
     // 1. Local Logic
     localStorage.setItem('poker_user_name', name);

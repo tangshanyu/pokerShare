@@ -1,60 +1,11 @@
-
 import { Player, CalculationResult, GameLog } from '../types';
 
 const STORAGE_KEYS = {
-  KNOWN_PLAYERS: 'poker_known_players',
-  GAME_RESULTS: 'poker_game_results_log'
+  GAME_RESULTS: 'poker_game_results_log',
+  KNOWN_PLAYERS: 'poker_known_players'
 };
 
-// --- Player Registry (Name Suggestions) ---
-
-export const getKnownPlayers = (): string[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.KNOWN_PLAYERS);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-export const addKnownPlayers = (names: string[]) => {
-  try {
-    const current = new Set(getKnownPlayers());
-    let hasChanges = false;
-    
-    names.forEach(n => {
-      if (n && n.trim()) {
-        const cleanName = n.trim();
-        if (!current.has(cleanName)) {
-          current.add(cleanName);
-          hasChanges = true;
-        }
-      }
-    });
-
-    if (hasChanges) {
-      localStorage.setItem(STORAGE_KEYS.KNOWN_PLAYERS, JSON.stringify(Array.from(current).sort()));
-    }
-  } catch (e) {
-    console.error("Failed to save players", e);
-  }
-};
-
-export const removeKnownPlayer = (nameToRemove: string) => {
-  try {
-    let current = getKnownPlayers();
-    const initialLen = current.length;
-    current = current.filter(n => n !== nameToRemove);
-    
-    if (current.length !== initialLen) {
-      localStorage.setItem(STORAGE_KEYS.KNOWN_PLAYERS, JSON.stringify(current));
-    }
-  } catch (e) {
-    console.error("Failed to remove player", e);
-  }
-};
-
-// --- Local History ---
+// --- Local History (Room Visits) ---
 
 export const getGameLogs = (): GameLog[] => {
   try {
@@ -85,11 +36,11 @@ export const saveGameLog = (roomId: string, result: CalculationResult, hostName:
     } else {
       logs.unshift(newEntry);
     }
+    
+    // Keep max 50 logs
+    if (logs.length > 50) logs.pop();
+
     localStorage.setItem(STORAGE_KEYS.GAME_RESULTS, JSON.stringify(logs));
-    
-    // Update known players locally
-    addKnownPlayers(result.players.map(p => p.name));
-    
   } catch (e) {
     console.error("Failed to save game log", e);
   }
@@ -97,4 +48,27 @@ export const saveGameLog = (roomId: string, result: CalculationResult, hostName:
 
 export const clearGameLogs = () => {
     localStorage.removeItem(STORAGE_KEYS.GAME_RESULTS);
+};
+
+// --- Known Players (Autocomplete) ---
+
+export const getKnownPlayers = (): string[] => {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEYS.KNOWN_PLAYERS);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+};
+
+export const addKnownPlayers = (names: string[]) => {
+    try {
+        const existing = new Set(getKnownPlayers());
+        names.forEach(n => {
+            if (n && typeof n === 'string') existing.add(n.trim());
+        });
+        localStorage.setItem(STORAGE_KEYS.KNOWN_PLAYERS, JSON.stringify(Array.from(existing)));
+    } catch (e) {
+        console.error("Failed to update known players", e);
+    }
 };

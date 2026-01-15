@@ -7,9 +7,10 @@ interface SettlementModalProps {
   onClose: () => void;
   result: CalculationResult | null;
   settings: GameSettings;
+  onShowCharts?: () => void;
 }
 
-export const SettlementModal: React.FC<SettlementModalProps> = ({ isOpen, onClose, result, settings }) => {
+export const SettlementModal: React.FC<SettlementModalProps> = ({ isOpen, onClose, result, settings, onShowCharts }) => {
   if (!isOpen || !result) return null;
 
   // Helpers
@@ -140,18 +141,27 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({ isOpen, onClos
         </div>
 
         {/* Footer Actions */}
-        <div className="p-5 border-t border-white/10 bg-black/40 flex space-x-3">
+        <div className="p-5 border-t border-white/10 bg-black/40 flex space-x-2">
             <button 
                 onClick={handleCopyText}
-                className="flex-1 py-3 rounded-xl font-bold bg-white/10 hover:bg-white/20 text-white transition-colors flex items-center justify-center border border-white/5"
+                className="flex-1 py-3 rounded-xl font-bold bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/5 text-xs md:text-sm"
             >
-                📋 複製文字 (Copy)
+                📋 複製 (Copy)
             </button>
+            
+            {onShowCharts && (
+                <button 
+                    onClick={onShowCharts}
+                    className="flex-1 py-3 rounded-xl font-bold bg-blue-600/80 hover:bg-blue-500 text-white transition-colors flex items-center justify-center shadow-lg text-xs md:text-sm"
+                >
+                    📊 圖表 (Stats)
+                </button>
+            )}
+
             <button 
                 onClick={handleShareSystem}
-                className="flex-1 py-3 rounded-xl font-bold bg-gradient-to-r from-poker-gold to-orange-500 text-black hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center shadow-lg"
+                className="flex-1 py-3 rounded-xl font-bold bg-gradient-to-r from-poker-gold to-orange-500 text-black hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center shadow-lg text-xs md:text-sm"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                 分享 (Share)
             </button>
         </div>

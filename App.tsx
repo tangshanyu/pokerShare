@@ -7,6 +7,7 @@ import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
 import { SettlementModal } from './components/SettlementModal';
+import { ReportsScreen } from './components/ReportsScreen';
 import { useStorage, useMutation, useOthers, useStatus } from './liveblocks.config';
 
 // Icons
@@ -25,8 +26,8 @@ const DocsIcon = () => (
 const ChatIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 );
-const SettingsIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+const StatsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
 );
 
 // Styled Loading Component
@@ -47,6 +48,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
 
   // Local UI State
   const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+  const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -131,18 +133,19 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
   const isLocked = settings.isLocked;
 
   return (
-    <div className="min-h-screen bg-[#0f0f13] text-white font-sans pb-20 md:pb-0">
+    <div className="min-h-screen bg-[#0f0f13] text-white font-sans pb-32 md:pb-0 relative overflow-hidden">
       
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-40 bg-[#0f0f13]/90 backdrop-blur-md border-b border-white/10 h-16 flex items-center justify-between px-4">
         <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setIsManagerOpen(true)}>
-          <div className="w-8 h-8 bg-poker-green rounded-lg flex items-center justify-center text-black font-bold text-lg">
+          <div className="w-8 h-8 bg-poker-green rounded-lg flex items-center justify-center text-black font-bold text-lg shadow-lg shadow-poker-green/20">
             P
           </div>
           <div className="flex flex-col">
-             <span className="font-bold text-sm tracking-wide">{settings.gameTitle || 'Poker Night'}</span>
-             <span className="text-[10px] text-gray-500 font-mono">
-               {players.length} Players • {others.length + 1} Online
+             <span className="font-bold text-sm tracking-wide text-white">{settings.gameTitle || 'Poker Night'}</span>
+             <span className="text-[10px] text-gray-500 font-mono flex items-center">
+               <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${status === 'connected' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+               {players.length} Players
              </span>
           </div>
         </div>
@@ -157,12 +160,6 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
                     <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0f0f13]"></span>
                 )}
             </button>
-            <button 
-                onClick={() => setIsSettlementOpen(true)}
-                className="bg-poker-green hover:bg-emerald-400 text-black px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-poker-green/20 transition-all transform active:scale-95"
-            >
-                結算 (Settle)
-            </button>
         </div>
       </nav>
 
@@ -170,7 +167,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
       <main className="pt-20 px-4 max-w-5xl mx-auto">
          
          {/* Info Banner */}
-         <div className="flex justify-between items-end mb-6">
+         <div className="flex justify-between items-end mb-6 animate-fade-in-up">
              <div>
                 <h1 className="text-2xl font-bold mb-1">記分板 (Scoreboard)</h1>
                 <p className="text-gray-400 text-xs">
@@ -180,14 +177,14 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
              <div className="flex space-x-2">
                  <button 
                     onClick={() => setIsImportOpen(true)}
-                    className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+                    className="p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors border border-white/5"
                     title="Import Data"
                  >
                      <DocsIcon />
                  </button>
                  <button 
                     onClick={() => setIsAddPlayerOpen(true)}
-                    className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-600/20 transition-all"
+                    className="flex items-center space-x-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold shadow-lg shadow-blue-600/20 transition-all border border-blue-500/50"
                     disabled={isLocked}
                  >
                      <PlusIcon /> <span>Player</span>
@@ -200,7 +197,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
              {players.map((player) => {
                  const currentNet = calculationResult?.players.find(p => p.id === player.id)?.netAmount || 0;
                  return (
-                     <div key={player.id} className="glass-panel p-5 rounded-2xl border border-white/5 hover:border-white/10 transition-all group relative">
+                     <div key={player.id} className="glass-panel p-5 rounded-2xl border border-white/5 hover:border-white/20 transition-all group relative animate-fade-in">
                          <div className="flex justify-between items-start mb-4">
                              <div className="flex items-center space-x-3">
                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-white font-bold text-lg border border-white/10 shadow-inner">
@@ -218,7 +215,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
                                     onClick={() => {
                                         if (confirm(`Remove ${player.name}?`)) removePlayer(player.id);
                                     }}
-                                    className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                    className="text-gray-600 hover:text-red-500 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity p-2 -mr-2"
                                  >
                                      <TrashIcon />
                                  </button>
@@ -227,7 +224,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
 
                          <div className="space-y-3">
                              {/* Buy-ins Control */}
-                             <div className="flex items-center justify-between bg-black/20 p-2 rounded-xl">
+                             <div className="flex items-center justify-between bg-black/20 p-2 rounded-xl border border-white/5">
                                  <span className="text-xs text-gray-500 font-bold uppercase ml-1">Buy-ins</span>
                                  <div className="flex items-center space-x-3">
                                      <button 
@@ -249,7 +246,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
                              </div>
 
                              {/* Chips Input */}
-                             <div className="bg-black/20 p-2 rounded-xl">
+                             <div className="bg-black/20 p-2 rounded-xl border border-white/5">
                                  <div className="flex justify-between mb-1 ml-1">
                                      <span className="text-xs text-gray-500 font-bold uppercase">Final Chips</span>
                                  </div>
@@ -282,6 +279,17 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
          </div>
       </main>
 
+      {/* Floating Settlement Button */}
+      <div className="fixed bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none">
+          <button 
+              onClick={() => setIsSettlementOpen(true)}
+              className="pointer-events-auto bg-gradient-to-r from-poker-gold to-orange-500 text-black px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,165,2,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center space-x-2 border border-yellow-500/50"
+          >
+              <ShareIcon />
+              <span>結算 (Settle)</span>
+          </button>
+      </div>
+
       {/* Modals */}
       <ImportModal 
         isOpen={isImportOpen} 
@@ -301,7 +309,19 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
         onClose={() => setIsSettlementOpen(false)} 
         result={calculationResult}
         settings={settings}
+        onShowCharts={() => {
+            setIsSettlementOpen(false);
+            setIsReportsOpen(true);
+        }}
       />
+
+      {isReportsOpen && (
+          <ReportsScreen 
+             onBack={() => setIsReportsOpen(false)}
+             players={Array.from(players)}
+             result={calculationResult}
+          />
+      )}
 
       <RoomManager 
         isOpen={isManagerOpen}
