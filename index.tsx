@@ -204,11 +204,18 @@ const LobbyScreen = ({
                         {!isLoading && activeRooms.length === 0 ? (
                             <option value="" disabled>無活躍房間 (No Active Rooms)</option>
                         ) : (
-                            activeRooms.map(r => (
-                                <option key={r.id} value={r.id}>
-                                    {r.id} - {new Date(r.lastConnectionAt).toLocaleDateString()}
-                                </option>
-                            ))
+                            activeRooms.map(r => {
+                                // Display logic: Title (ID) or just ID
+                                const displayText = r.metadata && r.metadata.title 
+                                    ? `🏆 ${r.metadata.title} (${r.id})` 
+                                    : `${r.id} - ${new Date(r.lastConnectionAt).toLocaleDateString()}`;
+
+                                return (
+                                    <option key={r.id} value={r.id}>
+                                        {displayText}
+                                    </option>
+                                );
+                            })
                         )}
                     </select>
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none text-xs">

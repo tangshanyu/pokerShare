@@ -1,3 +1,4 @@
+
 export default async function handler(request, response) {
   const API_KEY = process.env.LIVEBLOCKS_SECRET_KEY;
 
@@ -26,6 +27,39 @@ export default async function handler(request, response) {
 
         if (!res.ok) {
             throw new Error(`Failed to delete room: ${res.statusText}`);
+        }
+
+        return response.status(200).json({ success: true });
+    }
+
+    // HANDLE POST (Update Metadata - specifically Title)
+    if (request.method === 'POST') {
+        let body;
+        try {
+            body = await request.json();
+        } catch (e) {
+            body = request.body; // Fallback depending on body parsing middleware
+        }
+        
+        const { roomId, title } = body;
+
+        if (!roomId || !title) {
+            return response.status(400).json({ error: "Room ID and Title are required" });
+        }
+
+        const res = await fetch(`https://api.liveblocks.io/v2/rooms/${roomId}/metadata`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                title: title
+            })
+        });
+
+        if (!res.ok) {
+            throw new Error(`Failed to update metadata: ${res.statusText}`);
         }
 
         return response.status(200).json({ success: true });

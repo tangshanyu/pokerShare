@@ -125,6 +125,26 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
     }
   }, [players, settings]);
 
+  // Sync Game Title to Liveblocks Metadata so it shows in Lobby
+  useEffect(() => {
+      if (settings?.gameTitle && currentUser.isHost) {
+          const roomId = new URLSearchParams(window.location.search).get("room");
+          if (roomId) {
+              const timer = setTimeout(() => {
+                  fetch('/api/rooms', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                          roomId: roomId,
+                          title: settings.gameTitle
+                      })
+                  }).catch(console.error);
+              }, 2000); // Debounce 2s
+              return () => clearTimeout(timer);
+          }
+      }
+  }, [settings?.gameTitle, currentUser.isHost]);
+
   if (status === "loading" || !players || !settings) {
     return <LoadingBlock message="Syncing with Room..." />;
   }
