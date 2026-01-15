@@ -137,6 +137,8 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
                       body: JSON.stringify({
                           roomId: roomId,
                           title: settings.gameTitle
+                          // Note: We don't sync creator here to avoid overwriting it if logic differs, 
+                          // creator is usually static after creation.
                       })
                   }).catch(console.error);
               }, 2000); // Debounce 2s
@@ -152,6 +154,10 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
   // Derived Values
   const unreadMessages = 0; 
   const isLocked = settings.isLocked;
+
+  const creationDateLabel = settings.createdAt 
+    ? new Date(Number(settings.createdAt)).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null;
 
   const handleSettle = () => {
     const confirmed = window.confirm("確定要結算並鎖定房間嗎？(Settle & Lock?)");
@@ -184,10 +190,22 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
           </div>
           <div className="flex flex-col">
              <span className="font-bold text-sm tracking-wide text-white group-hover:text-poker-green transition-colors">{settings.gameTitle || 'Poker Night'}</span>
-             <span className="text-[10px] text-gray-500 font-mono flex items-center">
-               <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${status === 'connected' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-               {players.length} Players
-             </span>
+             <div className="flex items-center text-[10px] text-gray-500 font-mono space-x-2">
+                 <span className="flex items-center">
+                    <span className={`w-1.5 h-1.5 rounded-full mr-1 ${status === 'connected' ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
+                    {players.length}P
+                 </span>
+                 {settings.creatorName && (
+                     <span className="opacity-80 border-l border-white/10 pl-2">
+                        Host: {settings.creatorName}
+                     </span>
+                 )}
+                 {creationDateLabel && (
+                    <span className="hidden sm:inline opacity-60 border-l border-white/10 pl-2">
+                        {creationDateLabel}
+                    </span>
+                 )}
+             </div>
           </div>
         </div>
 

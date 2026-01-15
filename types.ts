@@ -14,6 +14,8 @@ export interface GameSettings {
   cashPerBuyIn: number; // E.g., 500 TWD per buy-in
   isLocked?: boolean; // If true, the game is finished and read-only
   showSettlement?: boolean; // If true, the settlement modal is open for everyone
+  creatorName?: string; // Name of the person who created the room
+  createdAt?: number; // Timestamp of creation
   [key: string]: any;
 }
 

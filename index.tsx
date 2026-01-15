@@ -20,7 +20,13 @@ interface UserState {
   id: string;
   name: string;
   isHost: boolean;
-  initialSettings?: { chip: number; cash: number; gameTitle?: string };
+  initialSettings?: { 
+      chip: number; 
+      cash: number; 
+      gameTitle?: string;
+      creatorName?: string;
+      createdAt?: number;
+  };
 }
 
 // Helper: Generate or retrieve a persistent User ID
@@ -286,17 +292,20 @@ const CreateRoomForm = ({
       // 2. Generate ID
       const newRoomId = await generateSequentialRoomId();
       const userId = getUserId();
+      const creationTime = Date.now();
       
       const finalTitle = gameTitle.trim() || getDefaultGameTitle();
 
       // 3. Explicitly Create Room with Metadata on Backend
-      // This ensures the title appears in the lobby list immediately
+      // This ensures the title and creator appears in the lobby list immediately
       await fetch('/api/rooms', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
               roomId: newRoomId,
               title: finalTitle,
+              creatorName: name,
+              createdAt: creationTime,
               intent: 'create' // Flag to force creation/permission setting
           })
       });
@@ -311,7 +320,9 @@ const CreateRoomForm = ({
         initialSettings: { 
             chip: chipRatio, 
             cash: cashRatio,
-            gameTitle: finalTitle
+            gameTitle: finalTitle,
+            creatorName: name,
+            createdAt: creationTime
         }
       }, newRoomId);
     } catch (e) {
@@ -406,17 +417,21 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
   const roomId = new URLSearchParams(window.location.search).get("room");
   const isPreviouslyHost = localStorage.getItem(`poker_is_host_${roomId}`) === 'true';
   const [clickCount, setClickCount] = useState(0);
-  const [roomTitle, setRoomTitle] = useState<string | null>(null);
+  const [roomData, setRoomData] = useState<{ title?: string, creator?: string, createdAt?: string } | null>(null);
 
-  // Fetch Room Title
+  // Fetch Room Info
   useEffect(() => {
       if (roomId) {
           fetch('/api/rooms')
               .then(res => res.json())
               .then(data => {
                   const room = data.rooms?.find((r: any) => r.id === roomId);
-                  if (room?.metadata?.title) {
-                      setRoomTitle(room.metadata.title);
+                  if (room?.metadata) {
+                      setRoomData({
+                          title: room.metadata.title,
+                          creator: room.metadata.creatorName,
+                          createdAt: room.metadata.createdAt // stored as string timestamp
+                      });
                   }
               })
               .catch(console.error);
@@ -448,6 +463,10 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
     }
   };
 
+  const formattedDate = roomData?.createdAt 
+    ? new Date(Number(roomData.createdAt)).toLocaleString('zh-TW', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute:'2-digit' }) 
+    : null;
+
   return (
       <div className="glass-panel p-8 md:p-10 rounded-3xl w-full max-w-md mx-4 border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] bg-gradient-to-br from-blue-500/10 to-transparent animate-spin-slow pointer-events-none"></div>
@@ -455,10 +474,24 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
         <div className="relative z-10">
           <div onClick={handleLogoClick} className="cursor-pointer select-none text-center mb-8">
             <h1 className="text-3xl font-bold mb-2 tracking-tight">加入房間</h1>
-            {roomTitle ? (
+            {roomData?.title ? (
                 <div className="flex flex-col items-center animate-fade-in">
-                    <h2 className="text-xl text-poker-green font-bold mb-1">{roomTitle}</h2>
-                    <p className="text-gray-500 text-xs font-mono">ID: {roomId}</p>
+                    <h2 className="text-xl text-poker-green font-bold mb-1">{roomData.title}</h2>
+                    <div className="flex items-center space-x-2 text-xs text-gray-500 font-mono mt-1 bg-black/30 px-3 py-1 rounded-full border border-white/5">
+                        {roomData.creator && (
+                            <span className="flex items-center">
+                                <span className="mr-1">👤</span> {roomData.creator}
+                            </span>
+                        )}
+                        {formattedDate && (
+                            <>
+                                <span className="opacity-30">|</span>
+                                <span className="flex items-center">
+                                    <span className="mr-1">🕒</span> {formattedDate}
+                                </span>
+                            </>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <p className="text-gray-400 text-sm font-mono tracking-wider bg-white/5 py-2 rounded-lg border border-white/5 inline-block px-4">
@@ -614,6 +647,8 @@ const Root = () => {
           gameTitle: userState.initialSettings?.gameTitle, // Pass Title
           chipPerBuyIn: userState.initialSettings?.chip || 1000,
           cashPerBuyIn: userState.initialSettings?.cash || 500,
+          creatorName: userState.initialSettings?.creatorName, // Store Creator
+          createdAt: userState.initialSettings?.createdAt, // Store Time
           isLocked: false,
           showSettlement: false
         })

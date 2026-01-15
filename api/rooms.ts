@@ -41,7 +41,7 @@ export default async function handler(request, response) {
             body = request.body; // Fallback depending on body parsing middleware
         }
         
-        const { roomId, title, intent } = body;
+        const { roomId, title, intent, creatorName, createdAt } = body;
 
         if (!roomId) {
             return response.status(400).json({ error: "Room ID is required" });
@@ -49,6 +49,13 @@ export default async function handler(request, response) {
 
         // SCENARIO 1: Explicitly Create Room (used when user clicks 'Start Game')
         if (intent === 'create') {
+            const metadata: any = { 
+                title: title || "New Poker Game"
+            };
+
+            if (creatorName) metadata.creatorName = creatorName;
+            if (createdAt) metadata.createdAt = String(createdAt);
+
             const res = await fetch(`https://api.liveblocks.io/v2/rooms`, {
                 method: 'POST',
                 headers: {
@@ -58,9 +65,7 @@ export default async function handler(request, response) {
                 body: JSON.stringify({
                     id: roomId,
                     defaultAccesses: ["room:write"], // Make it public for public key access
-                    metadata: { 
-                        title: title || "New Poker Game" 
-                    }
+                    metadata: metadata
                 })
             });
 

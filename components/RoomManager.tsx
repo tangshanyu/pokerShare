@@ -212,39 +212,50 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
                     <table className="w-full text-left text-xs">
                         <thead className="bg-white/5 text-gray-400 font-medium">
                             <tr>
-                                <th className="p-3">Room Details</th>
-                                <th className="p-3">Created</th>
+                                <th className="p-3">Room Info</th>
+                                <th className="p-3">Host</th>
                                 <th className="p-3">Active</th>
                                 <th className="p-3 text-right">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
-                            {globalRooms.map(room => (
-                                <tr key={room.id} className="hover:bg-white/5 transition-colors group">
-                                    <td className="p-3">
-                                        <div className="font-bold text-white mb-0.5">{room.metadata?.title || 'Untitled Room'}</div>
-                                        <div className="font-mono text-blue-300/60 text-[10px]">{room.id}</div>
-                                    </td>
-                                    <td className="p-3 text-gray-500">{new Date(room.createdAt).toLocaleDateString()}</td>
-                                    <td className="p-3 text-gray-400">{new Date(room.lastConnectionAt).toLocaleString()}</td>
-                                    <td className="p-3 text-right flex justify-end space-x-2">
-                                        <button 
-                                            onClick={() => switchRoom(room.id)}
-                                            className="text-gray-500 hover:text-white group-hover:underline px-2 py-1"
-                                        >
-                                            View
-                                        </button>
-                                        <button 
-                                            onClick={() => handleDeleteRoom(room.id)}
-                                            disabled={deletingRoomId === room.id}
-                                            className="text-red-500/50 hover:text-red-500 px-2 py-1 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
-                                            title="Delete Room"
-                                        >
-                                            {deletingRoomId === room.id ? '...' : '🗑️'}
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {globalRooms.map(room => {
+                                const creator = room.metadata?.creatorName || '-';
+                                // Prioritize metadata createdAt if available (stored as string), else use API createdAt
+                                const createdAtRaw = room.metadata?.createdAt ? Number(room.metadata.createdAt) : room.createdAt;
+                                const createdDate = new Date(createdAtRaw).toLocaleDateString();
+                                const createdTime = new Date(createdAtRaw).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+                                return (
+                                    <tr key={room.id} className="hover:bg-white/5 transition-colors group">
+                                        <td className="p-3">
+                                            <div className="font-bold text-white mb-0.5">{room.metadata?.title || 'Untitled Room'}</div>
+                                            <div className="font-mono text-blue-300/60 text-[10px]">{room.id}</div>
+                                        </td>
+                                        <td className="p-3">
+                                            <div className="text-white font-medium">{creator}</div>
+                                            <div className="text-[10px] text-gray-500">{createdDate} {createdTime}</div>
+                                        </td>
+                                        <td className="p-3 text-gray-400">{new Date(room.lastConnectionAt).toLocaleString()}</td>
+                                        <td className="p-3 text-right flex justify-end space-x-2">
+                                            <button 
+                                                onClick={() => switchRoom(room.id)}
+                                                className="text-gray-500 hover:text-white group-hover:underline px-2 py-1"
+                                            >
+                                                View
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteRoom(room.id)}
+                                                disabled={deletingRoomId === room.id}
+                                                className="text-red-500/50 hover:text-red-500 px-2 py-1 hover:bg-red-500/10 rounded transition-colors disabled:opacity-50"
+                                                title="Delete Room"
+                                            >
+                                                {deletingRoomId === room.id ? '...' : '🗑️'}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             {globalRooms.length === 0 && (
                                 <tr>
                                     <td colSpan={4} className="p-6 text-center text-gray-500">No active rooms found.</td>
