@@ -19,7 +19,7 @@ const ImportModalInner = ({ onClose, onImport }: Omit<ImportModalProps, 'isOpen'
         lines.forEach(line => {
             const parts = line.trim().split(/\s+/);
             if (parts.length > 0 && parts[0]) {
-                const name = parts[0];
+                const name = parts[0].slice(0, 60);
                 
                 // Avoid duplicates within the import itself
                 if (seenNames.has(name)) return;
@@ -30,12 +30,12 @@ const ImportModalInner = ({ onClose, onImport }: Omit<ImportModalProps, 'isOpen'
 
                 if (parts.length >= 2) {
                     const parsedBuyIns = parseFloat(parts[1]);
-                    buyIns = isNaN(parsedBuyIns) ? 1 : parsedBuyIns;
+                    buyIns = Number.isFinite(parsedBuyIns) ? Math.max(0, parsedBuyIns) : 1;
                 }
                 
                 if (parts.length >= 3) {
                     const parsedChips = parseFloat(parts[2]);
-                    chips = isNaN(parsedChips) ? 0 : parsedChips;
+                    chips = Number.isFinite(parsedChips) ? Math.max(0, parsedChips) : 0;
                 }
 
                 newPlayers.push({

@@ -53,6 +53,7 @@ const AddPlayerInner = ({ onClose, onAdd, existingNames }: Omit<AddPlayerModalPr
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="輸入玩家名稱..."
+                maxLength={60}
                 className="glass-input w-full rounded-xl py-4 px-5 text-white text-lg outline-none focus:border-blue-400 transition-colors"
                 autoFocus
                 onKeyDown={(e) => {

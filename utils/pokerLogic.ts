@@ -2,35 +2,61 @@ import { Player, GameSettings, Transfer, CalculationResult } from '../types';
 
 export const calculateSettlement = (players: readonly Player[], settings: Readonly<GameSettings>): CalculationResult => {
   const { chipPerBuyIn, cashPerBuyIn } = settings;
-  
-  // Guard against division by zero
-  if (chipPerBuyIn === 0) {
-      return { players: [], transfers: [], totalBalance: 0, isBalanced: false };
+
+  const settingsAreValid =
+    Number.isFinite(chipPerBuyIn) &&
+    Number.isFinite(cashPerBuyIn) &&
+    chipPerBuyIn > 0 &&
+    cashPerBuyIn > 0;
+  const playersAreValid = players.every(player =>
+    Number.isFinite(player.buyInCount) &&
+    Number.isFinite(player.finalChips) &&
+    player.buyInCount >= 0 &&
+    player.finalChips >= 0
+  );
+
+  if (!settingsAreValid || !playersAreValid) {
+    return {
+      players: players.map(player => ({ ...player, netAmount: 0 })),
+      transfers: [],
+      totalBalance: 0,
+      isBalanced: false,
+    };
   }
 
   const exchangeRate = cashPerBuyIn / chipPerBuyIn; // Cash per 1 chip
+  const totalPurchasedChips = players.reduce(
+    (sum, player) => sum + player.buyInCount * chipPerBuyIn,
+    0,
+  );
+  const totalFinalChips = players.reduce((sum, player) => sum + player.finalChips, 0);
+  const chipsAreBalanced = Math.abs(totalFinalChips - totalPurchasedChips) < 1e-9;
 
-  let totalBalance = 0;
-  
-  // 1. Calculate Net Amount for each player
-  const calculatedPlayers = players.map(player => {
-    // Total cost of buy-ins
-    const cost = player.buyInCount * cashPerBuyIn;
-    
-    // Value of chips held at the end
-    const finalValue = player.finalChips * exchangeRate;
-    
-    // Net profit/loss
-    const netAmount = Math.round(finalValue - cost);
-    
-    totalBalance += netAmount;
-    
-    return { ...player, netAmount };
+  const calculations = players.map(player => {
+    const rawNetAmount = player.finalChips * exchangeRate - player.buyInCount * cashPerBuyIn;
+    return { player, rawNetAmount, netAmount: Math.round(rawNetAmount) };
   });
 
-  // Check if roughly balanced (tolerance of +/- 1 due to rounding)
-  // If not balanced, we DO NOT calculate transfers to avoid fighting
-  const isBalanced = Math.abs(totalBalance) <= (exchangeRate < 1 ? 5 : 1);
+  let totalBalance = calculations.reduce((sum, item) => sum + item.netAmount, 0);
+  const calculatedPlayers = calculations.map(item => ({ ...item.player, netAmount: item.netAmount }));
+
+  // When chips are exactly conserved, per-player currency rounding may introduce a
+  // small drift. Apply that drift to the largest absolute result so transfers still
+  // sum to zero without hiding an actual chip-count mismatch.
+  if (chipsAreBalanced && totalBalance !== 0 && calculatedPlayers.length > 0) {
+    const adjustmentIndex = calculations.reduce(
+      (best, item, index, all) =>
+        Math.abs(item.rawNetAmount) > Math.abs(all[best].rawNetAmount) ? index : best,
+      0,
+    );
+    calculatedPlayers[adjustmentIndex] = {
+      ...calculatedPlayers[adjustmentIndex],
+      netAmount: (calculatedPlayers[adjustmentIndex].netAmount ?? 0) - totalBalance,
+    };
+    totalBalance = 0;
+  }
+
+  const isBalanced = chipsAreBalanced && totalBalance === 0;
 
   // 2. Calculate Transfers
   const transfers: Transfer[] = [];
@@ -38,12 +64,12 @@ export const calculateSettlement = (players: readonly Player[], settings: Readon
   if (isBalanced) {
     // Separate winners and losers
     // Clone objects to avoid mutating the original array reference during calculation
-    let debtors = calculatedPlayers
+    const debtors = calculatedPlayers
       .filter(p => (p.netAmount || 0) < 0)
       .map(p => ({ ...p, netAmount: p.netAmount || 0 }))
       .sort((a, b) => a.netAmount - b.netAmount); // Ascending (most negative first, e.g. -1000, -500)
 
-    let creditors = calculatedPlayers
+    const creditors = calculatedPlayers
       .filter(p => (p.netAmount || 0) > 0)
       .map(p => ({ ...p, netAmount: p.netAmount || 0 }))
       .sort((a, b) => b.netAmount - a.netAmount); // Descending (most positive first, e.g. 1000, 500)
@@ -87,8 +113,6 @@ export const calculateSettlement = (players: readonly Player[], settings: Readon
     isBalanced
   };
 };
-
-// --- Export Helpers ---
 
 export const generateTextSummary = (result: CalculationResult, settings: GameSettings): string => {
     const { chipPerBuyIn, cashPerBuyIn } = settings;
@@ -137,72 +161,4 @@ export const generateTextSummary = (result: CalculationResult, settings: GameSet
     }
 
     return text;
-};
-
-export const generateHTMLTable = (result: CalculationResult, settings: Readonly<GameSettings>): string => {
-  // Inline styles are required for copy-paste to Google Docs/Line Keep
-  const tableStyle = "border-collapse: collapse; width: 100%; font-family: sans-serif; font-size: 14px;";
-  const thStyle = "border-bottom: 2px solid #ddd; padding: 8px; text-align: left; color: #666;";
-  const tdStyle = "border-bottom: 1px solid #eee; padding: 8px;";
-  const profitStyle = "color: #00AA00; font-weight: bold;";
-  const lossStyle = "color: #CC0000; font-weight: bold;";
-
-  let html = `
-    <div style="font-family: sans-serif; padding: 10px;">
-    <h3 style="margin: 0 0 10px 0;">🎲 Poker Settlement</h3>
-    <p style="font-size: 12px; color: #888; margin: 0 0 15px 0;">1 Buy-in = $${settings.cashPerBuyIn} / ${settings.chipPerBuyIn} Chips</p>
-    
-    <h4 style="margin: 0 0 5px 0;">📊 Player Result</h4>
-    <table style="${tableStyle}">
-      <thead>
-        <tr>
-          <th style="${thStyle}">Player</th>
-          <th style="${thStyle}">Buy</th>
-          <th style="${thStyle}">Chips</th>
-          <th style="${thStyle}">Net</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-
-  result.players.sort((a,b) => (b.netAmount || 0) - (a.netAmount || 0)).forEach(p => {
-    const net = p.netAmount || 0;
-    const style = net >= 0 ? profitStyle : lossStyle;
-    const sign = net >= 0 ? '+' : '';
-    
-    html += `
-      <tr>
-        <td style="${tdStyle} font-weight: bold;">${p.name}</td>
-        <td style="${tdStyle}">${p.buyInCount}</td>
-        <td style="${tdStyle}">${p.finalChips}</td>
-        <td style="${tdStyle} ${style}">${sign}${net}</td>
-      </tr>
-    `;
-  });
-
-  html += `</tbody></table>`;
-
-  if (result.isBalanced && result.transfers.length > 0) {
-    html += `
-      <h4 style="margin: 20px 0 5px 0;">💸 Transfers (Who Pays Whom)</h4>
-      <table style="${tableStyle}">
-        <tbody>
-    `;
-
-    result.transfers.forEach(t => {
-      html += `
-        <tr>
-          <td style="${tdStyle}"><span style="${lossStyle}">${t.fromName}</span></td>
-          <td style="${tdStyle} text-align: center;">pays <strong>$${t.amount}</strong> to</td>
-          <td style="${tdStyle}"><span style="${profitStyle}">${t.toName}</span></td>
-        </tr>
-      `;
-    });
-    html += `</tbody></table>`;
-  } else if (!result.isBalanced) {
-      html += `<p style="color: red; font-weight: bold; margin-top: 20px;">⚠️ Unbalanced: ${result.totalBalance > 0 ? '+' : ''}${result.totalBalance}</p>`;
-  }
-
-  html += `</div>`;
-  return html;
 };

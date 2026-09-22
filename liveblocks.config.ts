@@ -1,62 +1,44 @@
-
-import { createClient } from "@liveblocks/client";
+import { createClient, LiveList, LiveObject } from "@liveblocks/client";
 import { createRoomContext } from "@liveblocks/react";
-import { LiveList, LiveObject } from "@liveblocks/client";
-import { Player, GameSettings, ChatMessage } from "./types";
 
-// Helper to safely get the API key in different environments
-const getApiKey = (): string | undefined => {
-  try {
-    // Vite / Modern Browsers
-    if (typeof import.meta !== "undefined" && (import.meta as any).env) {
-      const key = (import.meta as any).env.VITE_LIVEBLOCKS_PUBLIC_KEY;
-      if (key && typeof key === 'string' && key.startsWith('pk_')) return key;
-    }
-  } catch (e) {}
+import type { ChatMessage, GameSettings, Player } from "./types";
 
-  try {
-    // Node / Webpack / CRA / Process env
-    if (typeof process !== "undefined" && process.env) {
-      const key = process.env.REACT_APP_LIVEBLOCKS_PUBLIC_KEY || process.env.VITE_LIVEBLOCKS_PUBLIC_KEY;
-      if (key && typeof key === 'string' && key.startsWith('pk_')) return key;
-    }
-  } catch (e) {}
-  
-  // Fallback for dev/preview testing
-  return "pk_dev_GemJz7HP1OR8gWE8Y1LKxWTJV5iqbxU4bIR4Mu33lFgto9ydbwRosvbwwaevAXGJ";
-};
-
-const rawKey = getApiKey();
-// Export a flag to check if the key is valid in the UI
-export const hasApiKey = !!rawKey;
-
-// Use the key if valid, otherwise use a placeholder with valid prefix to prevent immediate crash inside createClient
-const publicApiKey = rawKey || "pk_placeholder_for_missing_key";
-
-const client = createClient({
-  publicApiKey,
-});
-
-// Presence represents the properties of a user in the room (cursor, selection, etc.)
 type Presence = {
   name?: string;
 };
 
-// Storage represents the shared document that persists in the room.
 type Storage = {
-  // Game Room Fields
-  players?: LiveList<Player>;
-  settings?: LiveObject<GameSettings>;
-  messages?: LiveList<ChatMessage>;
-  
-  [key: string]: any; // Required for LsonObject constraint compatibility
+  players: LiveList<Player>;
+  settings: LiveObject<GameSettings>;
+  messages: LiveList<ChatMessage>;
 };
+
+const client = createClient({
+  authEndpoint: async (room) => {
+    const userId = localStorage.getItem("poker_user_id");
+    const userName = localStorage.getItem("poker_user_name");
+    if (!userId || !userName) {
+      throw new Error("Player identity is missing. Please return to the lobby and join again.");
+    }
+
+    const response = await fetch("/api/liveblocks-auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room, userId, userName }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Unable to authorize this room.");
+    }
+
+    return response.json();
+  },
+});
 
 export const {
   RoomProvider,
-  useOthers,
   useStorage,
   useMutation,
-  useSelf,
   useStatus,
 } = createRoomContext<Presence, Storage>(client);

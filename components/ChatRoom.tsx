@@ -109,6 +109,7 @@ export const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, isOpen, onClose
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder="Type a message..."
+            maxLength={500}
             className="flex-1 bg-black/40 border border-white/10 rounded-full px-4 py-2 text-sm text-white focus:outline-none focus:border-poker-green/50 transition-colors"
           />
           <button 

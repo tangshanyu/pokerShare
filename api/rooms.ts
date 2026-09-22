@@ -1,129 +1,97 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 
-export default async function handler(request, response) {
-  const API_KEY = process.env.LIVEBLOCKS_SECRET_KEY;
+import { handleApiError, HttpError, readJsonBody, sendJson } from "../server/http";
+import {
+  createHostToken,
+  createRoomId,
+  getHeader,
+  getLiveblocksClient,
+  hashHostToken,
+  HOST_TOKEN_HEADER,
+  HOST_TOKEN_HASH_METADATA_KEY,
+  isHostTokenValid,
+  publicRoom,
+  requireHost,
+} from "../server/liveblocks";
 
-  if (!API_KEY) {
-    return response.status(500).json({ 
-      error: "Missing Secret Key configuration on server." 
-    });
-  }
+type ApiRequest = IncomingMessage & { body?: unknown };
 
+function cleanText(value: unknown, fallback: string, maxLength = 100): string {
+  if (typeof value !== "string") return fallback;
+  const cleaned = value.trim();
+  return cleaned ? cleaned.slice(0, maxLength) : fallback;
+}
+
+export default async function handler(request: ApiRequest, response: ServerResponse) {
   try {
-    // HANDLE DELETE
-    if (request.method === 'DELETE') {
-        const { searchParams } = new URL(request.url, `http://${request.headers.host}`);
-        const roomId = searchParams.get('roomId');
+    const method = request.method?.toUpperCase() ?? "GET";
+    const url = new URL(request.url ?? "/api/rooms", `http://${request.headers.host ?? "localhost"}`);
 
-        if (!roomId) {
-            return response.status(400).json({ error: "Room ID is required" });
-        }
+    if (method === "GET") {
+      const roomId = url.searchParams.get("roomId")?.trim();
+      if (!roomId) {
+        throw new HttpError(400, "roomId is required. Global room listing is disabled.");
+      }
 
-        const res = await fetch(`https://api.liveblocks.io/v2/rooms/${roomId}`, {
-            method: 'DELETE',
-            headers: {
-                Authorization: `Bearer ${API_KEY}`,
-            },
+      const room = await getLiveblocksClient().getRoom(roomId);
+      const isHost = isHostTokenValid(
+        getHeader(request, HOST_TOKEN_HEADER),
+        room.metadata?.[HOST_TOKEN_HASH_METADATA_KEY],
+      );
+      sendJson(response, 200, { room: publicRoom(room), isHost });
+      return;
+    }
+
+    if (method === "POST") {
+      const body = await readJsonBody(request);
+      const intent = body.intent;
+
+      if (intent === "create") {
+        const roomId = createRoomId();
+        const hostToken = createHostToken();
+        const title = cleanText(body.title, "New Poker Game");
+        const creatorName = cleanText(body.creatorName, "Anonymous", 60);
+        const createdAt = Date.now();
+
+        await getLiveblocksClient().createRoom(roomId, {
+          defaultAccesses: [],
+          metadata: {
+            title,
+            creatorName,
+            createdAt: String(createdAt),
+            [HOST_TOKEN_HASH_METADATA_KEY]: hashHostToken(hostToken),
+          },
         });
 
-        if (!res.ok) {
-            throw new Error(`Failed to delete room: ${res.statusText}`);
-        }
+        sendJson(response, 201, { roomId, hostToken, createdAt });
+        return;
+      }
 
-        return response.status(200).json({ success: true });
+      const roomId = cleanText(body.roomId, "", 100);
+      if (!roomId) throw new HttpError(400, "roomId is required.");
+
+      const { liveblocks } = await requireHost(request, roomId);
+      const title = cleanText(body.title, "", 100);
+      if (!title) throw new HttpError(400, "title is required.");
+
+      const room = await liveblocks.updateRoom(roomId, { metadata: { title } });
+      sendJson(response, 200, { room: publicRoom(room) });
+      return;
     }
 
-    // HANDLE POST (Create Room OR Update Metadata)
-    if (request.method === 'POST') {
-        let body;
-        try {
-            body = await request.json();
-        } catch (e) {
-            body = request.body; // Fallback depending on body parsing middleware
-        }
-        
-        const { roomId, title, intent, creatorName, createdAt } = body;
+    if (method === "DELETE") {
+      const roomId = url.searchParams.get("roomId")?.trim();
+      if (!roomId) throw new HttpError(400, "roomId is required.");
 
-        if (!roomId) {
-            return response.status(400).json({ error: "Room ID is required" });
-        }
-
-        // SCENARIO 1: Explicitly Create Room (used when user clicks 'Start Game')
-        if (intent === 'create') {
-            const metadata: any = { 
-                title: title || "New Poker Game"
-            };
-
-            if (creatorName) metadata.creatorName = creatorName;
-            if (createdAt) metadata.createdAt = String(createdAt);
-
-            const res = await fetch(`https://api.liveblocks.io/v2/rooms`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id: roomId,
-                    defaultAccesses: ["room:write"], // Make it public for public key access
-                    metadata: metadata
-                })
-            });
-
-            // If room already exists (409), fall through to update metadata instead of erroring
-            if (!res.ok && res.status !== 409) {
-                const errText = await res.text();
-                throw new Error(`Failed to create room: ${res.status} ${errText}`);
-            }
-            
-            // If creation successful, we are done. If 409, we proceed to update metadata below.
-            if (res.ok) {
-                return response.status(200).json({ success: true });
-            }
-        }
-
-        // SCENARIO 2: Update Metadata (used by App.tsx or fallback for 409)
-        if (title) {
-            const res = await fetch(`https://api.liveblocks.io/v2/rooms/${roomId}/metadata`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    title: title
-                })
-            });
-
-            if (!res.ok) {
-                throw new Error(`Failed to update metadata: ${res.statusText}`);
-            }
-        }
-
-        return response.status(200).json({ success: true });
+      const { liveblocks } = await requireHost(request, roomId);
+      await liveblocks.deleteRoom(roomId);
+      sendJson(response, 200, { success: true });
+      return;
     }
 
-    // HANDLE GET (List Rooms)
-    const res = await fetch("https://api.liveblocks.io/v2/rooms", {
-      headers: {
-        Authorization: `Bearer ${API_KEY}`,
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Liveblocks API error: ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    
-    // Sort by last connection (newest first)
-    const rooms = data.data.sort((a, b) => {
-        return new Date(b.lastConnectionAt).getTime() - new Date(a.lastConnectionAt).getTime();
-    });
-
-    return response.status(200).json({ rooms });
-    
+    response.setHeader("Allow", "GET, POST, DELETE");
+    throw new HttpError(405, "Method not allowed.");
   } catch (error) {
-    console.error(error);
-    return response.status(500).json({ error: error.message || "Internal Server Error" });
+    handleApiError(response, error);
   }
 }

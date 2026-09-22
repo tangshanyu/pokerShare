@@ -11,15 +11,15 @@ interface SettlementPanelProps {
 }
 
 export const SettlementPanel: React.FC<SettlementPanelProps> = ({ result, settings, onUnlock, currentUserIsHost }) => {
+  // Memoize the text so it doesn't regenerate on every render
+  const summaryText = useMemo(() => {
+      return result ? generateTextSummary(result, settings) : '';
+  }, [result, settings]);
+
   if (!result) return null;
 
   // Helpers
   const sortedPlayers = [...result.players].sort((a, b) => (b.netAmount || 0) - (a.netAmount || 0));
-  
-  // Memoize the text so it doesn't regenerate on every render
-  const summaryText = useMemo(() => {
-      return generateTextSummary(result, settings);
-  }, [result, settings]);
 
   const handleCopyText = () => {
       navigator.clipboard.writeText(summaryText);

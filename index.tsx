@@ -2,10 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
-import { RoomProvider, hasApiKey } from './liveblocks.config';
+import { RoomProvider } from './liveblocks.config';
 import { LiveList, LiveObject } from "@liveblocks/client";
 import { ClientSideSuspense } from "@liveblocks/react";
 import { RoomManager } from './components/RoomManager';
+import { roomHostHeaders, saveRoomHostToken } from './utils/roomAccess';
+import type { GameSettings } from './types';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -29,6 +31,12 @@ interface UserState {
   };
 }
 
+interface RoomHistory {
+  roomId: string;
+  timestamp: number;
+  hostName: string;
+}
+
 // Helper: Generate or retrieve a persistent User ID
 const getUserId = () => {
   let id = localStorage.getItem('poker_user_id');
@@ -44,10 +52,10 @@ const saveRoomToHistory = (roomId: string, hostName?: string) => {
   try {
     const key = 'poker_room_history';
     const raw = localStorage.getItem(key);
-    let history = raw ? JSON.parse(raw) : [];
+    let history: RoomHistory[] = raw ? JSON.parse(raw) : [];
     
     // Remove if exists (to move to top)
-    history = history.filter((r: any) => r.roomId !== roomId);
+    history = history.filter(r => r.roomId !== roomId);
     
     // Add to top
     history.unshift({
@@ -65,21 +73,12 @@ const saveRoomToHistory = (roomId: string, hostName?: string) => {
   }
 };
 
-const getLocalHistory = () => {
+const getLocalHistory = (): RoomHistory[] => {
     try {
         const raw = localStorage.getItem('poker_room_history');
         return raw ? JSON.parse(raw) : [];
     } catch { return []; }
 }
-
-// Helper: Generate Date String YYYYMMDD
-const getTodayString = () => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}${month}${day}`;
-};
 
 const getDefaultGameTitle = () => {
     const d = new Date();
@@ -104,6 +103,7 @@ const UserSelector = ({ name, setName }: UserSelectorProps) => {
         value={name}
         onChange={e => setName(e.target.value)}
         placeholder="Enter your name..."
+        maxLength={60}
         className="glass-input w-full rounded-xl py-4 px-5 text-white text-lg outline-none focus:border-poker-green transition-colors"
         autoFocus
         autoComplete="off"
@@ -123,32 +123,13 @@ const LobbyScreen = ({
     onCreateClick: () => void, 
     openManager: () => void
 }) => {
-    const [activeRooms, setActiveRooms] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [recentRooms] = useState<RoomHistory[]>(() => getLocalHistory());
     const [selectedRoom, setSelectedRoom] = useState("");
-
-    // Fetch rooms from Liveblocks API instead of Local Storage
-    useEffect(() => {
-        const fetchRooms = async () => {
-            try {
-                const res = await fetch('/api/rooms');
-                if (res.ok) {
-                    const data = await res.json();
-                    setActiveRooms(data.rooms || []);
-                }
-            } catch (e) {
-                console.error("Failed to fetch active rooms", e);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchRooms();
-    }, []);
 
     const handleRoomChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const roomId = e.target.value;
         if (roomId) {
-            window.location.href = `?room=${roomId}`;
+            window.location.href = `?room=${encodeURIComponent(roomId)}`;
         }
     };
 
@@ -188,39 +169,29 @@ const LobbyScreen = ({
                  </button>
              </div>
 
-             {/* Bottom: Live Rooms Dropdown */}
+             {/* Bottom: Rooms previously opened on this device */}
              <div className="w-full max-w-md">
-                 <div className="relative">
-                    <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
-                        {isLoading ? (
-                            <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                        ) : (
-                            '🌍'
-                        )}
-                    </div>
-                    <select
-                        value={selectedRoom}
-                        onChange={handleRoomChange}
-                        disabled={isLoading}
-                        className="w-full bg-black/30 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-gray-300 focus:outline-none focus:border-white/30 appearance-none cursor-pointer hover:bg-black/40 transition-colors disabled:opacity-50"
-                    >
-                        <option value="" disabled>
-                            {isLoading ? "正在搜尋活躍房間 (Loading)..." : "加入活躍房間 (Active Live Rooms)..."}
-                        </option>
-                        {!isLoading && activeRooms.length === 0 ? (
-                            <option value="" disabled>無活躍房間 (No Active Rooms)</option>
-                        ) : (
-                            activeRooms.map(r => {
-                                // Display logic: Title (ID) or just ID
-                                const displayText = r.metadata && r.metadata.title 
-                                    ? `🏆 ${r.metadata.title} (${r.id})` 
-                                    : `${r.id} - ${new Date(r.lastConnectionAt).toLocaleDateString()}`;
-
-                                return (
-                                    <option key={r.id} value={r.id}>
-                                        {displayText}
-                                    </option>
-                                );
+                  <div className="relative">
+                     <div className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 pointer-events-none">
+                         🕒
+                     </div>
+                     <select
+                         value={selectedRoom}
+                         onChange={handleRoomChange}
+                         className="w-full bg-black/30 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-gray-300 focus:outline-none focus:border-white/30 appearance-none cursor-pointer hover:bg-black/40 transition-colors disabled:opacity-50"
+                     >
+                         <option value="" disabled>
+                             最近加入的房間 (Recent Rooms)...
+                         </option>
+                         {recentRooms.length === 0 ? (
+                             <option value="" disabled>這台裝置尚無紀錄 (No Recent Rooms)</option>
+                         ) : (
+                             recentRooms.map(r => {
+                                 return (
+                                     <option key={r.roomId} value={r.roomId}>
+                                         {r.roomId} · {r.hostName || 'Visited'}
+                                     </option>
+                                 );
                             })
                         )}
                     </select>
@@ -246,85 +217,54 @@ const CreateRoomForm = ({
   const [chipRatio, setChipRatio] = useState(1000);
   const [cashRatio, setCashRatio] = useState(500);
   const [isGenerating, setIsGenerating] = useState(false);
-  
-  const generateSequentialRoomId = async () => {
-    const datePrefix = getTodayString();
-    try {
-      const res = await fetch('/api/rooms');
-      if (res.ok) {
-        const data = await res.json();
-        const rooms = data.rooms || [];
-        const todaysRooms = rooms.filter((r: any) => {
-             return r.id.startsWith(datePrefix) && !isNaN(Number(r.id.substring(8)));
-        });
-
-        let maxSeq = 0;
-        todaysRooms.forEach((r: any) => {
-            const suffix = r.id.substring(8);
-            const seq = parseInt(suffix, 10);
-            if (!isNaN(seq) && seq > maxSeq) {
-                maxSeq = seq;
-            }
-        });
-        const nextSeq = String(maxSeq + 1).padStart(3, '0');
-        return `${datePrefix}${nextSeq}`;
-      }
-    } catch (e) {
-      console.warn("API fetch failed", e);
-    }
-    const now = new Date();
-    const timeSuffix = String(now.getHours()).padStart(2, '0') + 
-                       String(now.getMinutes()).padStart(2, '0') + 
-                       String(now.getSeconds()).padStart(2, '0');
-    return `${datePrefix}${timeSuffix}`;
-  };
 
   const handleCreate = async () => {
     // Validation: Name must be entered
     if (!name.trim()) return alert("請輸入玩家名稱 (Please enter a name)");
+    if (!Number.isFinite(chipRatio) || chipRatio <= 0 || !Number.isFinite(cashRatio) || cashRatio <= 0) {
+      return alert("籌碼與現金比例必須大於 0 (Ratios must be greater than zero)");
+    }
     
     setIsGenerating(true);
 
     try {
       // 1. Local Storage Preference
-      localStorage.setItem('poker_user_name', name);
+      const playerName = name.trim();
+      localStorage.setItem('poker_user_name', playerName);
 
-      // 2. Generate ID
-      const newRoomId = await generateSequentialRoomId();
       const userId = getUserId();
-      const creationTime = Date.now();
-      
       const finalTitle = gameTitle.trim() || getDefaultGameTitle();
 
-      // 3. Explicitly Create Room with Metadata on Backend
-      // This ensures the title and creator appears in the lobby list immediately
-      await fetch('/api/rooms', {
+      // 2. Let the server generate the unpredictable room ID and host capability.
+      const response = await fetch('/api/rooms', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-              roomId: newRoomId,
               title: finalTitle,
-              creatorName: name,
-              createdAt: creationTime,
-              intent: 'create' // Flag to force creation/permission setting
+              creatorName: playerName,
+              intent: 'create'
           })
       });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.roomId || !data.hostToken) {
+        throw new Error(data.error || 'Failed to create room');
+      }
 
-      localStorage.setItem(`poker_is_host_${newRoomId}`, 'true');
-      saveRoomToHistory(newRoomId, name);
+      saveRoomHostToken(data.roomId, data.hostToken);
+      saveRoomToHistory(data.roomId, playerName);
 
       onJoin({
         id: userId,
-        name: name,
+        name: playerName,
         isHost: true,
         initialSettings: { 
             chip: chipRatio, 
             cash: cashRatio,
             gameTitle: finalTitle,
-            creatorName: name,
-            createdAt: creationTime
+            creatorName: playerName,
+            createdAt: data.createdAt
         }
-      }, newRoomId);
+      }, data.roomId);
     } catch (e) {
       console.error(e);
       alert("建立房間失敗，請檢查網路連線 (Failed to create room)");
@@ -355,6 +295,7 @@ const CreateRoomForm = ({
                     value={gameTitle}
                     onChange={e => setGameTitle(e.target.value)}
                     placeholder="e.g. Friday Night Poker"
+                    maxLength={100}
                     className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none focus:border-poker-green"
                  />
             </div>
@@ -364,6 +305,7 @@ const CreateRoomForm = ({
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Chips</label>
                   <input 
                     type="number" 
+                    min="1"
                     value={chipRatio}
                     onChange={e => setChipRatio(Number(e.target.value))}
                     className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none text-center"
@@ -373,6 +315,7 @@ const CreateRoomForm = ({
                   <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Cash ($)</label>
                   <input 
                     type="number" 
+                    min="1"
                     value={cashRatio}
                     onChange={e => setCashRatio(Number(e.target.value))}
                     className="glass-input w-full rounded-xl py-3 px-4 text-white outline-none text-center"
@@ -415,17 +358,26 @@ const CreateRoomForm = ({
 const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => void, openManager: () => void }) => {
   const [name, setName] = useState(localStorage.getItem('poker_user_name') || '');
   const roomId = new URLSearchParams(window.location.search).get("room");
-  const isPreviouslyHost = localStorage.getItem(`poker_is_host_${roomId}`) === 'true';
   const [clickCount, setClickCount] = useState(0);
   const [roomData, setRoomData] = useState<{ title?: string, creator?: string, createdAt?: string } | null>(null);
+  const [roomError, setRoomError] = useState<string | null>(null);
+  const [isLoadingRoom, setIsLoadingRoom] = useState(true);
+  const [isVerifiedHost, setIsVerifiedHost] = useState(false);
 
   // Fetch Room Info
   useEffect(() => {
       if (roomId) {
-          fetch('/api/rooms')
-              .then(res => res.json())
+          fetch(`/api/rooms?roomId=${encodeURIComponent(roomId)}`, {
+              headers: roomHostHeaders(roomId),
+          })
+              .then(async res => {
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) throw new Error(data.error || 'Room not found');
+                  return data;
+              })
               .then(data => {
-                  const room = data.rooms?.find((r: any) => r.id === roomId);
+                  setIsVerifiedHost(data.isHost === true);
+                  const room = data.room;
                   if (room?.metadata) {
                       setRoomData({
                           title: room.metadata.title,
@@ -434,7 +386,10 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
                       });
                   }
               })
-              .catch(console.error);
+              .catch(error => setRoomError(error.message || 'Room not found'))
+              .finally(() => setIsLoadingRoom(false));
+      } else {
+          setIsLoadingRoom(false);
       }
   }, [roomId]);
 
@@ -442,15 +397,16 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
     if (!name.trim()) return alert("請輸入玩家名稱 (Please enter a name)");
     
     // 1. Local Logic
-    localStorage.setItem('poker_user_name', name);
-    if (roomId) saveRoomToHistory(roomId, 'Visited');
+    const playerName = name.trim();
+    localStorage.setItem('poker_user_name', playerName);
+    if (roomId) saveRoomToHistory(roomId, roomData?.creator || (isVerifiedHost ? playerName : 'Visited'));
 
     const userId = getUserId();
     
     onJoin({
       id: userId,
-      name: name,
-      isHost: isPreviouslyHost // Restore host status if they created it
+      name: playerName,
+      isHost: isVerifiedHost
     });
   };
 
@@ -498,6 +454,9 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
                     {roomId}
                 </p>
             )}
+            {roomError && (
+                <p className="mt-3 text-sm text-red-400">⚠️ {roomError}</p>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -509,10 +468,10 @@ const JoinRoomForm = ({ onJoin, openManager }: { onJoin: (state: UserState) => v
 
             <button 
               onClick={handleJoin}
-              disabled={!name.trim()}
-              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all ${!name.trim() ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={!name.trim() || !!roomError || isLoadingRoom}
+              className={`w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white font-bold text-lg py-4 rounded-xl shadow-[0_0_20px_rgba(59,130,246,0.3)] transform hover:scale-[1.02] active:scale-[0.98] transition-all ${!name.trim() || !!roomError || isLoadingRoom ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
-              👋 加入遊戲 (Join)
+              {isLoadingRoom ? '確認房間中…' : '👋 加入遊戲 (Join)'}
             </button>
           </div>
         </div>
@@ -569,18 +528,6 @@ const JoinRoomScreen = (props: any) => (
   </div>
 );
 
-// Error Screen
-const MissingKeyScreen = () => (
-  <div className="min-h-screen flex items-center justify-center bg-[#0f0f13] text-white font-sans p-4">
-    <div className="glass-panel p-8 rounded-3xl text-center max-w-md w-full border border-red-500/30">
-        <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl">⚠️</div>
-        <h1 className="text-2xl font-bold mb-2">Configuration Missing</h1>
-        <p className="text-gray-400 mb-6 text-sm">Liveblocks API Key is missing.</p>
-        <code className="block text-xs font-mono text-poker-green bg-black/40 p-2 rounded">VITE_LIVEBLOCKS_PUBLIC_KEY</code>
-    </div>
-  </div>
-);
-
 // --- Main Root Component ---
 
 const Root = () => {
@@ -590,8 +537,6 @@ const Root = () => {
   
   // Navigation State for Home
   const [homeView, setHomeView] = useState<'lobby' | 'create'>('lobby');
-
-  if (!hasApiKey) return <MissingKeyScreen />;
 
   // 1. If no room ID in URL, show Main Menu (Lobby or Create)
   if (!roomId) {
@@ -636,6 +581,15 @@ const Root = () => {
   }
 
   // 3. User authenticated, render Room
+  const initialSettings: GameSettings = {
+    chipPerBuyIn: userState.initialSettings?.chip || 1000,
+    cashPerBuyIn: userState.initialSettings?.cash || 500,
+    isLocked: false,
+  };
+  if (userState.initialSettings?.gameTitle) initialSettings.gameTitle = userState.initialSettings.gameTitle;
+  if (userState.initialSettings?.creatorName) initialSettings.creatorName = userState.initialSettings.creatorName;
+  if (userState.initialSettings?.createdAt) initialSettings.createdAt = userState.initialSettings.createdAt;
+
   return (
     <RoomProvider 
       id={roomId} 
@@ -643,15 +597,7 @@ const Root = () => {
       initialStorage={{
         players: new LiveList([]),
         messages: new LiveList([]),
-        settings: new LiveObject({
-          gameTitle: userState.initialSettings?.gameTitle, // Pass Title
-          chipPerBuyIn: userState.initialSettings?.chip || 1000,
-          cashPerBuyIn: userState.initialSettings?.cash || 500,
-          creatorName: userState.initialSettings?.creatorName, // Store Creator
-          createdAt: userState.initialSettings?.createdAt, // Store Time
-          isLocked: false,
-          showSettlement: false
-        })
+        settings: new LiveObject(initialSettings)
       }}
     >
       <ClientSideSuspense fallback={<Loading message="Joining Room..." />}>

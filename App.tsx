@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Player, CalculationResult } from './types';
+import { Player, CalculationResult, GameSettings } from './types';
 import { calculateSettlement } from './utils/pokerLogic';
 import { ImportModal } from './components/ImportModal';
 import { AddPlayerModal } from './components/AddPlayerModal';
 import { ChatRoom } from './components/ChatRoom';
 import { RoomManager } from './components/RoomManager';
 import { SettlementPanel } from './components/SettlementPanel';
-import { useStorage, useMutation, useOthers, useStatus } from './liveblocks.config';
+import { useStorage, useMutation, useStatus } from './liveblocks.config';
+import { roomHostHeaders } from './utils/roomAccess';
 
 // Icons
 const ShareIcon = () => (
@@ -41,7 +42,6 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
   // Liveblocks Storage
   const players = useStorage((root) => root.players);
   const settings = useStorage((root) => root.settings);
-  const others = useOthers();
   const status = useStatus();
 
   // Local UI State
@@ -91,11 +91,12 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
     }
   }, []);
 
-  const updateSettings = useMutation(({ storage }, newSettings: Partial<any>) => {
+  const updateSettings = useMutation(({ storage }, newSettings: Partial<GameSettings>) => {
     const settingsObj = storage.get('settings');
     if (settingsObj) {
-      Object.keys(newSettings).forEach(key => {
-        settingsObj.set(key, newSettings[key]);
+      (Object.keys(newSettings) as (keyof typeof newSettings)[]).forEach(key => {
+        const value = newSettings[key];
+        if (value !== undefined) settingsObj.set(key, value);
       });
     }
   }, []);
@@ -133,13 +134,18 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
               const timer = setTimeout(() => {
                   fetch('/api/rooms', {
                       method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: {
+                          'Content-Type': 'application/json',
+                          ...roomHostHeaders(roomId),
+                      },
                       body: JSON.stringify({
                           roomId: roomId,
                           title: settings.gameTitle
                           // Note: We don't sync creator here to avoid overwriting it if logic differs, 
                           // creator is usually static after creation.
                       })
+                  }).then(response => {
+                      if (!response.ok) throw new Error('Failed to update room title');
                   }).catch(console.error);
               }, 2000); // Debounce 2s
               return () => clearTimeout(timer);
@@ -147,7 +153,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
       }
   }, [settings?.gameTitle, currentUser.isHost]);
 
-  if (status === "loading" || !players || !settings) {
+  if (status === "initial" || status === "connecting" || !players || !settings) {
     return <LoadingBlock message="Syncing with Room..." />;
   }
 
@@ -160,6 +166,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
     : null;
 
   const handleSettle = () => {
+    if (!currentUser.isHost) return;
     const confirmed = window.confirm("確定要結算並鎖定房間嗎？(Settle & Lock?)");
     if (confirmed) {
         toggleLock(true);
@@ -317,9 +324,10 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
                                      <span className="text-xs text-gray-500 font-bold uppercase">Final Chips</span>
                                  </div>
                                  <input 
-                                     type="number"
-                                     value={player.finalChips}
-                                     onChange={(e) => updatePlayer(player.id, { finalChips: Number(e.target.value) })}
+                                      type="number"
+                                      min="0"
+                                      value={player.finalChips}
+                                      onChange={(e) => updatePlayer(player.id, { finalChips: Math.max(0, Number(e.target.value) || 0) })}
                                      disabled={isLocked}
                                      className="w-full bg-transparent text-right font-mono text-xl font-bold text-poker-gold outline-none placeholder-gray-700"
                                      placeholder="0"
@@ -357,10 +365,11 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
         <div className="fixed bottom-8 left-0 right-0 z-30 flex justify-center">
             <button 
                 onClick={handleSettle}
-                disabled={players.length === 0}
+                disabled={players.length === 0 || !currentUser.isHost}
+                title={!currentUser.isHost ? 'Only the host can settle this room' : undefined}
                 className={`
                     px-8 py-4 rounded-full font-bold text-lg shadow-[0_0_20px_rgba(255,165,2,0.4)] transition-all flex items-center space-x-2 border
-                    ${players.length === 0 ? 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-poker-gold to-orange-500 text-black hover:scale-105 active:scale-95 border-yellow-500/50'}
+                    ${players.length === 0 || !currentUser.isHost ? 'bg-gray-700 text-gray-400 border-gray-600 cursor-not-allowed opacity-50' : 'bg-gradient-to-r from-poker-gold to-orange-500 text-black hover:scale-105 active:scale-95 border-yellow-500/50'}
                 `}
             >
                 <ShareIcon />
@@ -389,6 +398,7 @@ export const App = ({ currentUser }: { currentUser: { id: string; name: string; 
         settings={settings}
         updateSettings={updateSettings}
         isHost={currentUser.isHost}
+        currentRoomId={new URLSearchParams(window.location.search).get('room') || undefined}
       />
 
       <ChatRoom 
